@@ -24,6 +24,20 @@ if (!TOMTOM_API_KEY) {
 const app = express();
 app.use(bodyParser.json());
 
+// Health check endpoint for Railway
+app.get('/', (req, res) => {
+  res.json({
+    service: 'Multi-Agent TomTom Maps MCP Server',
+    status: 'healthy',
+    version: '2.0.0',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      mcp: 'POST /',
+      tomtom_api: 'GET /api/tomtom/*'
+    }
+  });
+});
+
 // Regular REST API endpoints (for direct testing)
 app.use('/api/tomtom', require('./tomtom-maps'));
 
