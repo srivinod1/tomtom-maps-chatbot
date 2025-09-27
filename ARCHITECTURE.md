@@ -194,15 +194,14 @@ if (isLocationQuery) {
 
 ## 🌐 MCP Methods Reference
 
-### Agent Methods
+### Orchestrator Methods (Single Interface)
 
-#### `agent.chat`
-**Purpose**: Chat with the multi-agent system
+#### `orchestrator.chat`
+**Purpose**: Single endpoint for all user interactions with the multi-agent system
 
 **Parameters**:
-- `message` (string): User message
-- `user_id` (string, optional): User identifier
-- `use_llm` (boolean, optional): Enable LLM enhancement
+- `message` (string): User message in natural language
+- `user_id` (string, optional): User identifier for context management
 
 **Response**:
 ```json
@@ -219,8 +218,23 @@ if (isLocationQuery) {
 }
 ```
 
-#### `agent.capabilities`
-**Purpose**: Get system capabilities and agent information
+**Usage Examples**:
+```javascript
+// General conversation
+{"method": "orchestrator.chat", "params": {"message": "Hello! What can you do?"}}
+
+// Location search
+{"method": "orchestrator.chat", "params": {"message": "Find coffee shops near me"}}
+
+// Directions
+{"method": "orchestrator.chat", "params": {"message": "How do I get from Seattle to Portland?"}}
+
+// Geocoding
+{"method": "orchestrator.chat", "params": {"message": "What are the coordinates for 123 Main Street?"}}
+```
+
+#### `orchestrator.capabilities`
+**Purpose**: Get orchestrator capabilities and available services
 
 **Response**:
 ```json
@@ -228,27 +242,41 @@ if (isLocationQuery) {
   "jsonrpc": "2.0",
   "id": 1,
   "result": {
-    "agents": {
-      "maps_agent": {
-        "description": "Handles location-based queries using TomTom Maps",
-        "capabilities": ["location_search", "geocoding", "reverse_geocoding", "routing", "static_maps", "matrix_routing"]
-      },
-      "general_ai_agent": {
-        "description": "Handles general knowledge and conversational queries",
-        "capabilities": ["general_knowledge", "conversation", "help_queries"]
-      },
-      "context_manager": {
-        "description": "Manages user context and conversation history",
-        "capabilities": ["context_management", "user_preferences", "conversation_history"]
-      }
+    "orchestrator": {
+      "description": "Multi-agent orchestrator that coordinates specialized agents",
+      "capabilities": [
+        "natural_language_processing",
+        "query_routing",
+        "agent_coordination",
+        "response_synthesis"
+      ]
     },
-    "mcp_methods": ["maps.search", "maps.geocode", "maps.reverseGeocode", "maps.directions", "maps.staticMap", "maps.matrix", "agent.chat", "agent.capabilities", "agent.context"]
+    "available_services": {
+      "location_services": [
+        "place_search",
+        "geocoding",
+        "reverse_geocoding",
+        "directions",
+        "static_maps",
+        "matrix_routing"
+      ],
+      "general_services": [
+        "conversation",
+        "help_queries",
+        "context_management"
+      ]
+    },
+    "mcp_methods": [
+      "orchestrator.chat",
+      "orchestrator.capabilities",
+      "orchestrator.context"
+    ]
   }
 }
 ```
 
-#### `agent.context`
-**Purpose**: Manage user context
+#### `orchestrator.context`
+**Purpose**: Manage user context and preferences
 
 **Parameters**:
 - `user_id` (string): User identifier
@@ -269,66 +297,18 @@ if (isLocationQuery) {
 }
 ```
 
-### Maps Methods
+### Internal Methods (Not Exposed to Frontend)
 
-#### `maps.search`
-**Purpose**: Search for places using TomTom Orbis Search API
+**Note**: The following methods are used internally by the orchestrator and are not directly accessible from the frontend:
 
-**Parameters**:
-- `query` (string): Search query
-- `location` (object, optional): Location bias with lat/lon
-- `type` (string, optional): Place type filter
+- `maps.search` - TomTom location search
+- `maps.geocode` - Address to coordinates conversion
+- `maps.reverseGeocode` - Coordinates to address conversion
+- `maps.directions` - Route calculation
+- `maps.staticMap` - Map image generation
+- `maps.matrix` - Multi-destination routing
 
-**Response**:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "places": [
-      {
-        "name": "Coffee Shop",
-        "formatted_address": "123 Main St, Seattle, WA",
-        "location": {"lat": 47.6062, "lon": -122.3321},
-        "rating": 4.5
-      }
-    ]
-  }
-}
-```
-
-#### `maps.directions`
-**Purpose**: Calculate routes between locations
-
-**Parameters**:
-- `origin` (object): Origin location with lat/lon
-- `destination` (object): Destination location with lat/lon
-- `travelMode` (string): Travel mode (car, pedestrian, bicycle, truck)
-
-**Response**:
-```json
-{
-  "jsonrpc": "2.0",
-  "id": 1,
-  "result": {
-    "routes": [
-      {
-        "summary": {
-          "distance": {"text": "5.2 km", "value": 5200},
-          "duration": {"text": "12 mins", "value": 720}
-        },
-        "steps": [
-          {
-            "html_instructions": "Head north on Main St",
-            "distance": {"text": "1.2 km", "value": 1200},
-            "duration": {"text": "3 mins", "value": 180}
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+These methods are called internally by the orchestrator when processing location-related queries through the `orchestrator.chat` endpoint.
 
 ## 🚀 Deployment Architecture
 
