@@ -624,6 +624,62 @@ function formatMatrixResults(matrixData) {
 let conversationHistory = [];
 let userContexts = {};
 
+// Context management functions
+function getUserContext(userId) {
+  if (!userContexts[userId]) {
+    userContexts[userId] = {
+      lastLocation: null,
+      lastCoordinates: null,
+      conversationHistory: [],
+      preferences: {}
+    };
+  }
+  return userContexts[userId];
+}
+
+function updateUserContext(userId, contextUpdate) {
+  const context = getUserContext(userId);
+  Object.assign(context, contextUpdate);
+  userContexts[userId] = context;
+}
+
+function extractLocationFromMessage(message, userContext) {
+  // Look for coordinates in the message
+  const coordPattern = /(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/;
+  const coordMatch = message.match(coordPattern);
+  
+  if (coordMatch) {
+    return {
+      lat: parseFloat(coordMatch[1]),
+      lon: parseFloat(coordMatch[2]),
+      source: 'coordinates'
+    };
+  }
+  
+  // Look for address patterns
+  const addressPattern = /(\d+\s+[A-Za-z\s]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|way|drive|dr|lane|ln|place|pl|court|ct|circle|cir|parkway|pkwy|highway|hwy|route|rt|ijburglaan|amsterdam|netherlands|nl))/i;
+  const addressMatch = message.match(addressPattern);
+  
+  if (addressMatch) {
+    return {
+      address: addressMatch[1],
+      source: 'address'
+    };
+  }
+  
+  // Use last known location if available
+  if (userContext.lastLocation) {
+    return userContext.lastLocation;
+  }
+  
+  return null;
+}
+
+function getConversationContext(userId, limit = 5) {
+  const context = getUserContext(userId);
+  return context.conversationHistory.slice(-limit);
+}
+
 // LLM Integration Functions
 async function callOpenAI(message, context = '') {
   if (!OPENAI_API_KEY) {
@@ -705,7 +761,17 @@ async function handleOrchestratorChat(rpcRequest, res) {
       });
     }
     
+    // Get user context
+    const userContext = getUserContext(user_id);
+    const conversationContext = getConversationContext(user_id);
+    
     // Store user message
+    userContext.conversationHistory.push({
+      timestamp: new Date().toISOString(),
+      type: 'user',
+      message
+    });
+    
     conversationHistory.push({
       timestamp: new Date().toISOString(),
       user_id,
@@ -713,13 +779,26 @@ async function handleOrchestratorChat(rpcRequest, res) {
       message
     });
     
+    // Extract location from message or context
+    const extractedLocation = extractLocationFromMessage(message, userContext);
+    
+    // Update context with extracted location
+    if (extractedLocation) {
+      updateUserContext(user_id, {
+        lastLocation: extractedLocation,
+        lastCoordinates: extractedLocation.source === 'coordinates' ? 
+          { lat: extractedLocation.lat, lon: extractedLocation.lon } : 
+          userContext.lastCoordinates
+      });
+    }
+    
     // Simple agent routing logic
     let response = '';
     let agent_used = '';
     let query_type = 'general';
     
     // Check if it's a location query
-    const locationKeywords = ['where', 'location', 'address', 'place', 'find', 'search', 'near', 'nearby', 'directions', 'route', 'coordinates', 'geocode'];
+    const locationKeywords = ['where', 'location', 'address', 'place', 'find', 'search', 'near', 'nearby', 'directions', 'route', 'coordinates', 'geocode', 'restaurant', 'restaurants', 'closest'];
     const isLocationQuery = locationKeywords.some(keyword => message.toLowerCase().includes(keyword));
     
     if (isLocationQuery) {
@@ -727,14 +806,43 @@ async function handleOrchestratorChat(rpcRequest, res) {
       query_type = 'location';
       
       // Handle location queries by calling TomTom APIs internally
-      if (message.toLowerCase().includes('search') || message.toLowerCase().includes('find')) {
+      if (message.toLowerCase().includes('search') || message.toLowerCase().includes('find') || message.toLowerCase().includes('restaurant') || message.toLowerCase().includes('closest')) {
         // Extract search parameters and call TomTom search
-        const searchQuery = message.replace(/find|search|near|me/gi, '').trim();
+        let searchQuery = message.replace(/find|search|near|me|restaurant|restaurants|closest|to this place|along with distances/gi, '').trim();
+        if (!searchQuery) searchQuery = 'restaurants';
+        
         try {
+          // Use extracted location or default
+          let searchLocation = { lat: 47.6062, lon: -122.3321 }; // Default to Seattle
+          
+          if (extractedLocation && extractedLocation.source === 'coordinates') {
+            searchLocation = { lat: extractedLocation.lat, lon: extractedLocation.lon };
+          } else if (userContext.lastCoordinates) {
+            searchLocation = userContext.lastCoordinates;
+          } else if (extractedLocation && extractedLocation.source === 'address') {
+            // Geocode the address first
+            try {
+              const geocodeResult = await handleGeocode({
+                params: { address: extractedLocation.address }
+              }, { json: () => ({}) });
+              
+              if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+                const coords = geocodeResult.results[0].position;
+                searchLocation = { lat: coords.lat, lon: coords.lon };
+                updateUserContext(user_id, { lastCoordinates: searchLocation });
+                console.log(`Geocoded address: ${extractedLocation.address} -> ${coords.lat}, ${coords.lon}`);
+              }
+            } catch (geocodeError) {
+              console.error('Geocoding error:', geocodeError);
+            }
+          }
+          
+          // Call TomTom search
+          console.log(`Searching for "${searchQuery}" at location:`, searchLocation);
           const searchResult = await handleMapSearch({
             params: {
-              query: searchQuery || 'places',
-              location: { lat: 47.6062, lon: -122.3321 } // Default to Seattle
+              query: searchQuery,
+              location: searchLocation
             }
           }, { json: () => ({}) });
           
@@ -744,10 +852,11 @@ async function handleOrchestratorChat(rpcRequest, res) {
               response += `${index + 1}. **${place.name}**\n`;
               response += `   📍 ${place.formatted_address}\n`;
               if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
+              if (place.distance) response += `   📏 ${place.distance} km away\n`;
               response += '\n';
             });
           } else {
-            response = `I couldn't find any places for "${searchQuery}". Try a different search term or location.`;
+            response = `I couldn't find any places for "${searchQuery}" near the specified location. Please try a different search term or provide a more specific location.`;
           }
         } catch (error) {
           response = `I can help you search for places, but I need more specific information. What are you looking for?`;
@@ -763,15 +872,29 @@ async function handleOrchestratorChat(rpcRequest, res) {
       agent_used = 'general_ai_agent';
       query_type = 'general';
       
+      // Build context for LLM
+      let contextMessage = `You are a helpful assistant integrated with TomTom Maps. You can help with location searches, directions, geocoding, and general questions.`;
+      
+      // Add conversation context
+      if (conversationContext.length > 0) {
+        contextMessage += `\n\nRecent conversation context:\n`;
+        conversationContext.forEach((msg, index) => {
+          contextMessage += `${msg.type}: ${msg.message}\n`;
+        });
+      }
+      
+      // Add location context if available
+      if (userContext.lastLocation) {
+        contextMessage += `\n\nUser's last known location: ${JSON.stringify(userContext.lastLocation)}`;
+      }
+      
       // Always use LLM for general questions
       try {
-        const context = `You are a helpful assistant integrated with TomTom Maps. You can help with location searches, directions, geocoding, and general questions.`;
-        
         // Try OpenAI first, then Anthropic, then fallback
         if (OPENAI_API_KEY) {
-          response = await callOpenAI(message, context);
+          response = await callOpenAI(message, contextMessage);
         } else if (ANTHROPIC_API_KEY) {
-          response = await callAnthropic(message, context);
+          response = await callAnthropic(message, contextMessage);
         } else {
           throw new Error('No LLM API keys configured');
         }
@@ -789,6 +912,12 @@ async function handleOrchestratorChat(rpcRequest, res) {
     }
     
     // Store assistant response
+    userContext.conversationHistory.push({
+      timestamp: new Date().toISOString(),
+      type: 'assistant',
+      message: response
+    });
+    
     conversationHistory.push({
       timestamp: new Date().toISOString(),
       user_id,
