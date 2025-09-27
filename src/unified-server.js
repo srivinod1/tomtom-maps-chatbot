@@ -1228,14 +1228,23 @@ async function processLocationRequest(payload) {
       searchLocation = location_context.coordinates;
     } else if (location_context.source === 'address') {
       // Use MCP to geocode the address
-      const geocodeResult = await geocodeAddress(location_context.address);
-      if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
-        const coords = geocodeResult.results[0].position;
-        searchLocation = { lat: coords.lat, lon: coords.lon };
-        updated_context = {
-          lastCoordinates: searchLocation,
-          lastLocation: location_context
-        };
+      console.log('Geocoding address:', location_context.address);
+      try {
+        const geocodeResult = await geocodeAddress(location_context.address);
+        console.log('Geocoding result:', geocodeResult);
+        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+          const coords = geocodeResult.results[0].position;
+          searchLocation = { lat: coords.lat, lon: coords.lon };
+          updated_context = {
+            lastCoordinates: searchLocation,
+            lastLocation: location_context
+          };
+        } else {
+          console.log('No geocoding results found');
+        }
+      } catch (error) {
+        console.error('Geocoding error:', error);
+        throw error;
       }
     } else if (location_context.source === 'context_reference' && user_context.lastCoordinates) {
       searchLocation = user_context.lastCoordinates;
