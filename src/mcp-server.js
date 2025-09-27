@@ -680,6 +680,22 @@ function getConversationContext(userId, limit = 5) {
   return context.conversationHistory.slice(-limit);
 }
 
+function cleanupConversationHistory(userId, maxMessages = 50) {
+  const context = getUserContext(userId);
+  if (context.conversationHistory.length > maxMessages) {
+    // Keep the last maxMessages messages
+    context.conversationHistory = context.conversationHistory.slice(-maxMessages);
+    console.log(`Cleaned up conversation history for user ${userId}, kept last ${maxMessages} messages`);
+  }
+}
+
+function cleanupGlobalHistory(maxMessages = 1000) {
+  if (conversationHistory.length > maxMessages) {
+    conversationHistory = conversationHistory.slice(-maxMessages);
+    console.log(`Cleaned up global conversation history, kept last ${maxMessages} messages`);
+  }
+}
+
 // LLM Integration Functions
 async function callOpenAI(message, context = '') {
   if (!OPENAI_API_KEY) {
@@ -928,6 +944,10 @@ async function handleOrchestratorChat(rpcRequest, res) {
         query_type
       }
     });
+    
+    // Cleanup old messages to prevent memory issues
+    cleanupConversationHistory(user_id, 50); // Keep last 50 messages per user
+    cleanupGlobalHistory(1000); // Keep last 1000 messages globally
     
     return res.json({
       jsonrpc: '2.0',
