@@ -6,7 +6,7 @@
 
 const { VertexAI } = require('@google-cloud/vertexai');
 const { Logging } = require('@google-cloud/logging');
-const { Monitoring } = require('@google-cloud/monitoring');
+const monitoring = require('@google-cloud/monitoring');
 
 class ComprehensiveObservability {
   constructor(projectId, location = 'us-central1') {
@@ -25,7 +25,7 @@ class ComprehensiveObservability {
     });
     
     // Initialize Cloud Monitoring
-    this.monitoring = new Monitoring({
+    this.monitoring = new monitoring.MetricServiceClient({
       projectId: projectId
     });
     
