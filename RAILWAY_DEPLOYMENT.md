@@ -34,11 +34,11 @@ Ensure your repository contains:
 2. **Configure Environment Variables**:
    - Go to your project settings
    - Add the following environment variables:
-     ```
-     TOMTOM_API_KEY=your_tomtom_api_key_here
-     MCP_SERVER_URL=http://localhost:3000
-     FLASK_ENV=production
-     ```
+   ```
+   TOMTOM_API_KEY=your_tomtom_api_key_here
+   RAILWAY_ENVIRONMENT=production
+   FLASK_ENV=production
+   ```
 
 3. **Deploy**:
    - Railway will automatically detect your Python app
@@ -65,7 +65,7 @@ Ensure your repository contains:
 4. **Set Environment Variables**:
    ```bash
    railway variables set TOMTOM_API_KEY=your_tomtom_api_key_here
-   railway variables set MCP_SERVER_URL=http://localhost:3000
+   railway variables set RAILWAY_ENVIRONMENT=production
    railway variables set FLASK_ENV=production
    ```
 
@@ -86,7 +86,7 @@ Ensure your repository contains:
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `TOMTOM_API_KEY` | Your TomTom API key | Yes | - |
-| `MCP_SERVER_URL` | URL of the TomTom MCP server | No | `http://localhost:3000` |
+| `RAILWAY_ENVIRONMENT` | Railway environment flag | No | - |
 | `FLASK_ENV` | Flask environment | No | `production` |
 | `PORT` | Port for the Flask app | No | `5000` (Railway sets this) |
 

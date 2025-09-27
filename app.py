@@ -27,7 +27,16 @@ CORS(app)  # Enable CORS for frontend integration
 # Initialize the chatbot agent
 # Use environment variable for MCP server URL (Railway will provide this)
 mcp_server_url = os.getenv('MCP_SERVER_URL', 'http://localhost:3000')
-agent = TomTomChatbotAgent(mcp_server_url=mcp_server_url)
+
+# Check if we're running in Railway (production)
+is_railway = os.getenv('RAILWAY_ENVIRONMENT') is not None
+
+if is_railway:
+    # In Railway, we'll use direct TomTom API calls instead of MCP server
+    agent = TomTomChatbotAgent(mcp_server_url=None, use_direct_api=True)
+else:
+    # Local development - use MCP server
+    agent = TomTomChatbotAgent(mcp_server_url=mcp_server_url)
 
 @app.route('/')
 def health_check():
