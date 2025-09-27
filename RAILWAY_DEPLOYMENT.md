@@ -1,76 +1,62 @@
 # Railway Deployment Guide
 
-This guide explains how to deploy the TomTom Maps Chatbot Agent to Railway.
+This guide explains how to deploy the Multi-Agent TomTom Maps MCP Server to Railway.
 
-## Prerequisites
+## 🚂 Deployment Overview
+
+The deployment consists of a **single service** on Railway that runs the MCP server with multi-agent capabilities.
+
+## 📋 Prerequisites
 
 1. **Railway Account**: Sign up at [railway.app](https://railway.app)
-2. **GitHub Repository**: Push your code to GitHub
-3. **TomTom API Key**: Get your API key from [TomTom Developer Portal](https://developer.tomtom.com/)
+2. **GitHub Repository**: Your code pushed to GitHub
+3. **TomTom API Key**: Get one from [TomTom Developer Portal](https://developer.tomtom.com/)
 
-## Deployment Steps
+## 🚀 Deployment Steps
 
-### 1. Prepare Your Repository
+### Step 1: Prepare Your Repository
 
 Ensure your repository contains:
-- `app.py` - Flask API server
-- `chatbot_agent.py` - Chatbot agent logic
-- `src/mcp-server.js` - TomTom MCP server
-- `requirements.txt` - Python dependencies
-- `package.json` - Node.js dependencies
-- `railway.json` - Railway configuration for Flask app
-- `railway-mcp.json` - Railway configuration for MCP server
-- `Procfile` - Process definition for Flask app
-- `Procfile-mcp` - Process definition for MCP server
-- `runtime.txt` - Python version
-- `.env.example` - Environment variables template
+- `package.json` - Node.js dependencies and scripts
+- `src/mcp-server.js` - Main MCP server
+- `src/tomtom-maps/index.js` - TomTom API integration
+- `railway.json` - Railway configuration
+- `Procfile` - Process definition
+- `.env.example` - Environment variable template
 
-### 2. Deploy to Railway
+### Step 2: Deploy to Railway
 
-You need to deploy **TWO services** on Railway:
+#### Option A: Railway Dashboard (Recommended)
 
-#### Service 1: TomTom MCP Server
+1. **Go to Railway Dashboard**:
+   - Visit [railway.app/dashboard](https://railway.app/dashboard)
+   - Sign in with your GitHub account
 
-1. **Create First Service**:
-   - Go to [Railway Dashboard](https://railway.app/dashboard)
+2. **Create New Project**:
    - Click "New Project"
    - Select "Deploy from GitHub repo"
    - Choose your repository
-   - **Rename the service to "mcp-server"**
 
-2. **Configure MCP Server**:
-   - In the service settings, set the **Root Directory** to the repository root
-   - Set **Build Command** to: `npm install`
-   - Set **Start Command** to: `npm start`
-   - Add environment variable:
-     ```
-     TOMTOM_API_KEY=your_tomtom_api_key_here
-     ```
+3. **Configure Service**:
+   - Railway will automatically detect it's a Node.js app
+   - The service will be named after your repository
 
-3. **Get MCP Server URL**:
-   - After deployment, copy the service URL (e.g., `https://mcp-server-production-xxx.up.railway.app`)
-   - This will be your `MCP_SERVER_URL`
+4. **Set Environment Variables**:
+   - Go to your service settings
+   - Click "Variables" tab
+   - Add the following environment variables:
 
-#### Service 2: Flask API Server
+   ```
+   TOMTOM_API_KEY=your_actual_tomtom_api_key_here
+   NODE_ENV=production
+   ```
 
-1. **Add Second Service**:
-   - In the same Railway project, click "New Service"
-   - Select "Deploy from GitHub repo"
-   - Choose the same repository
-   - **Rename the service to "api-server"**
+5. **Deploy**:
+   - Railway will automatically build and deploy
+   - Monitor the deployment logs
+   - Wait for "Deployment successful" message
 
-2. **Configure Flask Server**:
-   - In the service settings, set the **Root Directory** to the repository root
-   - Set **Build Command** to: `pip install -r requirements.txt`
-   - Set **Start Command** to: `python app.py`
-   - Add environment variables:
-     ```
-     TOMTOM_API_KEY=your_tomtom_api_key_here
-     MCP_SERVER_URL=https://mcp-server-production-xxx.up.railway.app
-     FLASK_ENV=production
-     ```
-
-#### Option B: Deploy with Railway CLI
+#### Option B: Railway CLI
 
 1. **Install Railway CLI**:
    ```bash
@@ -89,9 +75,8 @@ You need to deploy **TWO services** on Railway:
 
 4. **Set Environment Variables**:
    ```bash
-   railway variables set TOMTOM_API_KEY=your_tomtom_api_key_here
-   railway variables set MCP_SERVER_URL=http://localhost:3000
-   railway variables set FLASK_ENV=production
+   railway variables set TOMTOM_API_KEY=your_actual_tomtom_api_key_here
+   railway variables set NODE_ENV=production
    ```
 
 5. **Deploy**:
@@ -99,118 +84,184 @@ You need to deploy **TWO services** on Railway:
    railway up
    ```
 
-### 3. Configure Custom Domain (Optional)
+## 🔧 Configuration
 
-1. Go to your project settings in Railway
-2. Click "Domains"
-3. Add your custom domain
-4. Configure DNS records as instructed
-
-## Environment Variables
+### Environment Variables
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `TOMTOM_API_KEY` | Your TomTom API key | Yes | - |
-| `MCP_SERVER_URL` | URL of the TomTom MCP server | No | `http://localhost:3000` |
-| `FLASK_ENV` | Flask environment | No | `production` |
-| `PORT` | Port for the Flask app | No | `5000` (Railway sets this) |
+| `NODE_ENV` | Environment mode | No | `production` |
+| `PORT` | Server port | No | `3000` (Railway sets this) |
 
-## API Endpoints
+### Railway Configuration
 
-Once deployed, your chatbot will be available at:
+The `railway.json` file configures:
+- **Builder**: NIXPACKS (automatic Node.js detection)
+- **Start Command**: `npm start` (runs `node src/mcp-server.js`)
+- **Health Check**: Root path `/`
+- **Restart Policy**: On failure with max 10 retries
 
-- **Health Check**: `GET /`
-- **Chat**: `POST /api/chat`
-- **Chat History**: `GET /api/chat/history`
-- **Set Context**: `POST /api/context`
-- **Get Context**: `GET /api/context/<user_id>`
-- **Capabilities**: `GET /api/capabilities`
+## 🌐 Accessing Your Deployed Service
 
-### Example API Usage
-
-```bash
-# Health check
-curl https://your-app.railway.app/
-
-# Send a chat message
-curl -X POST https://your-app.railway.app/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Find restaurants near me", "user_id": "user123"}'
-
-# Get chat history
-curl https://your-app.railway.app/api/chat/history?user_id=user123&limit=5
-
-# Set user context (e.g., current location)
-curl -X POST https://your-app.railway.app/api/context \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "user123", "context": {"current_location": {"lat": 47.6062, "lon": -122.3321}}}'
+Once deployed, your MCP server will be available at:
+```
+https://your-service-name-production-xxxx.up.railway.app
 ```
 
-## Frontend Integration
+### Health Check
+```bash
+curl https://your-service-name-production-xxxx.up.railway.app/
+```
+
+### Test MCP Methods
+```bash
+# Test agent capabilities
+curl -X POST https://your-service-name-production-xxxx.up.railway.app \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.capabilities"}'
+
+# Test agent chat
+curl -X POST https://your-service-name-production-xxxx.up.railway.app \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.chat", "params": {"message": "Hello!", "user_id": "test_user"}}'
+```
+
+## 🔍 Monitoring & Debugging
+
+### Railway Dashboard
+- **Logs**: View real-time application logs
+- **Metrics**: Monitor CPU, memory, and network usage
+- **Deployments**: Track deployment history and status
+
+### Health Monitoring
+- Railway automatically monitors the health check endpoint
+- Failed health checks trigger automatic restarts
+- Monitor logs for any issues
+
+### Common Issues
+
+1. **Build Failures**:
+   - Check `package.json` dependencies
+   - Verify Node.js version compatibility
+   - Review build logs in Railway dashboard
+
+2. **Runtime Errors**:
+   - Check environment variables are set correctly
+   - Verify TomTom API key is valid
+   - Review application logs
+
+3. **Health Check Failures**:
+   - Ensure MCP server starts successfully
+   - Check if port is correctly configured
+   - Verify health check endpoint responds
+
+## 🔄 Updates & Redeployment
+
+### Automatic Deployments
+- Railway automatically redeploys when you push to your main branch
+- Each push triggers a new deployment
+- Previous deployments are kept for rollback
+
+### Manual Deployments
+```bash
+# Using Railway CLI
+railway up
+
+# Or trigger from Railway dashboard
+# Go to your service → Deployments → Redeploy
+```
+
+## 📊 Scaling
+
+### Horizontal Scaling
+- Railway can automatically scale based on traffic
+- Configure scaling in service settings
+- Monitor usage and adjust as needed
+
+### Performance Optimization
+- Enable Railway's CDN for static assets
+- Configure caching headers
+- Monitor response times and optimize
+
+## 🛡️ Security
+
+### Environment Variables
+- Never commit API keys to your repository
+- Use Railway's secure environment variable storage
+- Rotate API keys regularly
+
+### Network Security
+- Railway provides HTTPS by default
+- Configure CORS if needed for frontend integration
+- Use Railway's built-in DDoS protection
+
+## 💰 Cost Management
+
+### Railway Pricing
+- Railway offers a free tier with usage limits
+- Monitor your usage in the dashboard
+- Upgrade plans as needed
+
+### Optimization Tips
+- Use efficient Node.js practices
+- Implement proper error handling
+- Monitor memory usage and optimize
+
+## 🔗 Frontend Integration
 
 ### JavaScript Example
-
 ```javascript
-// Send a message to the chatbot
+const MCP_SERVER_URL = 'https://your-service-name-production-xxxx.up.railway.app';
+
 async function sendMessage(message, userId = 'default') {
-  try {
-    const response = await fetch('https://your-app.railway.app/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: message,
-        user_id: userId
-      })
-    });
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error('Error:', error);
-    return { success: false, error: error.message };
-  }
+  const response = await fetch(MCP_SERVER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'agent.chat',
+      params: { message, user_id: userId }
+    })
+  });
+  
+  const data = await response.json();
+  return data.result.response;
 }
 
 // Usage
-sendMessage('Find coffee shops near 47.6062, -122.3321')
-  .then(result => {
-    if (result.success) {
-      console.log('Bot response:', result.response);
-    } else {
-      console.error('Error:', result.error);
-    }
-  });
+sendMessage('Find coffee shops near me')
+  .then(response => console.log(response));
 ```
 
 ### React Example
-
 ```jsx
 import React, { useState } from 'react';
 
-function Chatbot() {
+const MCP_SERVER_URL = 'https://your-service-name-production-xxxx.up.railway.app';
+
+function ChatComponent() {
   const [message, setMessage] = useState('');
   const [response, setResponse] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const sendMessage = async () => {
-    if (!message.trim()) return;
-    
-    setLoading(true);
     try {
-      const result = await fetch('https://your-app.railway.app/api/chat', {
+      const result = await fetch(MCP_SERVER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, user_id: 'user123' })
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'agent.chat',
+          params: { message, user_id: 'user123' }
+        })
       });
       
       const data = await result.json();
-      setResponse(data.response);
+      setResponse(data.result.response);
     } catch (error) {
-      setResponse('Sorry, I encountered an error.');
-    } finally {
-      setLoading(false);
+      console.error('Error:', error);
     }
   };
 
@@ -219,52 +270,32 @@ function Chatbot() {
       <input
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="Ask me about places, directions, or coordinates..."
+        placeholder="Ask me anything..."
       />
-      <button onClick={sendMessage} disabled={loading}>
-        {loading ? 'Sending...' : 'Send'}
-      </button>
+      <button onClick={sendMessage}>Send</button>
       {response && <div>{response}</div>}
     </div>
   );
 }
 ```
 
-## Monitoring and Logs
+## 📚 Additional Resources
 
-1. **View Logs**: Go to your Railway project dashboard and click "Logs"
-2. **Monitor Performance**: Use Railway's built-in metrics
-3. **Set up Alerts**: Configure alerts for errors or high usage
+- [Railway Documentation](https://docs.railway.app/)
+- [Node.js on Railway](https://docs.railway.app/deploy/nodejs)
+- [Environment Variables](https://docs.railway.app/deploy/environment-variables)
+- [Custom Domains](https://docs.railway.app/deploy/custom-domains)
 
-## Troubleshooting
+## 🆘 Support
 
-### Common Issues
+### Railway Support
+- [Railway Discord](https://discord.gg/railway)
+- [Railway GitHub](https://github.com/railwayapp)
+- [Railway Status](https://status.railway.app/)
 
-1. **App won't start**:
-   - Check logs for dependency issues
-   - Ensure `requirements.txt` includes all dependencies
-   - Verify Python version in `runtime.txt`
+### Project Support
+- Check project documentation
+- Review logs for error details
+- Test locally before deploying
 
-2. **API calls failing**:
-   - Check if `TOMTOM_API_KEY` is set correctly
-   - Verify MCP server is running (if using external server)
-   - Check Railway logs for error details
-
-3. **CORS issues**:
-   - Ensure `flask-cors` is installed
-   - Check if frontend domain is allowed
-
-### Getting Help
-
-- Check Railway documentation: [docs.railway.app](https://docs.railway.app)
-- View your app logs in Railway dashboard
-- Test API endpoints using curl or Postman
-
-## Cost Considerations
-
-Railway offers:
-- **Free tier**: $5 credit monthly
-- **Pro plan**: Pay-as-you-go pricing
-- **Team plan**: For collaborative development
-
-Monitor your usage in the Railway dashboard to avoid unexpected charges.
+This deployment guide ensures your Multi-Agent TomTom Maps MCP Server runs smoothly on Railway with proper monitoring and scaling capabilities.
