@@ -9,6 +9,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const A2AProtocol = require('./a2a-protocol');
+const VertexAIObservability = require('./vertex-observability');
 require('dotenv').config();
 
 // Constants for LLM APIs
@@ -172,9 +173,40 @@ app.get('/agents', (req, res) => {
   });
 });
 
+// Analytics endpoint for Vertex AI observability
+app.get('/analytics', async (req, res) => {
+  try {
+    if (!vertexObservability) {
+      return res.json({
+        error: 'Vertex AI Observability not configured',
+        message: 'Set GOOGLE_CLOUD_PROJECT environment variable to enable observability'
+      });
+    }
+
+    const analytics = await vertexObservability.getToolCallAnalytics(req.query.timeRange || '1h');
+    
+    res.json({
+      success: true,
+      analytics: analytics,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Analytics error:', error);
+    res.status(500).json({
+      error: 'Failed to get analytics',
+      message: error.message
+    });
+  }
+});
+
 // Multi-Agent System State
 let conversationHistory = [];
 let userContexts = {};
+
+// Initialize Vertex AI Observability
+const vertexObservability = process.env.GOOGLE_CLOUD_PROJECT ? 
+  new VertexAIObservability(process.env.GOOGLE_CLOUD_PROJECT) : 
+  null;
 
 // User Context Management
 function getUserContext(userId) {
@@ -277,8 +309,24 @@ async function callAnthropic(message, context = '') {
   }
 }
 
-// Internal Maps Agent Communication
-async function callMapsAgent(messageType, payload) {
+// Internal Maps Agent Communication with Observability
+async function callMapsAgent(messageType, payload, userId = 'anonymous') {
+  const startTime = Date.now();
+  const correlationId = `internal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const toolCall = {
+    toolName: messageType,
+    agentId: 'maps-agent',
+    agentType: 'maps',
+    input: payload,
+    userId: userId,
+    correlationId: correlationId,
+    success: false,
+    output: null,
+    error: null,
+    duration: 0
+  };
+
   try {
     // Call the Maps Agent A2A handler directly instead of HTTP
     const a2aMessage = {
@@ -298,16 +346,38 @@ async function callMapsAgent(messageType, payload) {
       message: {
         type: messageType,
         payload: payload,
-        correlationId: `internal-${Date.now()}`,
+        correlationId: correlationId,
         timeout: 10000
       }
     };
     
     // Process the A2A message directly
     const result = await mapsA2A.processA2AMessage(a2aMessage);
+    
+    // Update tool call with success
+    toolCall.success = true;
+    toolCall.output = result;
+    toolCall.duration = Date.now() - startTime;
+    
+    // Observe the tool call
+    if (vertexObservability) {
+      await vertexObservability.observeToolCall(toolCall);
+    }
+    
     return result;
   } catch (error) {
     console.error('Internal Maps Agent error:', error.message);
+    
+    // Update tool call with error
+    toolCall.success = false;
+    toolCall.error = error.message;
+    toolCall.duration = Date.now() - startTime;
+    
+    // Observe the failed tool call
+    if (vertexObservability) {
+      await vertexObservability.observeToolCall(toolCall);
+    }
+    
     throw error;
   }
 }
