@@ -32,8 +32,8 @@ app.get('/', (req, res) => {
     version: '2.0.0',
     timestamp: new Date().toISOString(),
     endpoints: {
-      mcp: 'POST /',
-      tomtom_api: 'GET /api/tomtom/*'
+      orchestrator: 'POST / (JSON-RPC)',
+      health: 'GET /'
     }
   });
 });
@@ -55,19 +55,10 @@ app.post('/', async (req, res) => {
           id: rpcRequest.id,
           result: {
             capabilities: {
-              maps: {
-                search: true,
-                directions: true,
-                staticMap: true,
-                geocode: true,
-                reverseGeocode: true,
-                matrix: true
-              },
-              agents: {
-                orchestrator: true,
-                maps: true,
-                general_ai: true,
-                context_manager: true
+              orchestrator: {
+                chat: true,
+                capabilities: true,
+                context: true
               }
             },
             serverInfo: {
@@ -78,32 +69,14 @@ app.post('/', async (req, res) => {
           }
         });
       
-      case 'maps.search':
-        return await handleMapSearch(rpcRequest, res);
+      case 'orchestrator.chat':
+        return await handleOrchestratorChat(rpcRequest, res);
       
-      case 'maps.directions':
-        return await handleMapDirections(rpcRequest, res);
+      case 'orchestrator.capabilities':
+        return await handleOrchestratorCapabilities(rpcRequest, res);
       
-      case 'maps.staticMap':
-        return await handleStaticMap(rpcRequest, res);
-      
-      case 'maps.geocode':
-        return await handleGeocode(rpcRequest, res);
-      
-      case 'maps.reverseGeocode':
-        return await handleReverseGeocode(rpcRequest, res);
-      
-      case 'maps.matrix':
-        return await handleMatrix(rpcRequest, res);
-      
-      case 'agent.chat':
-        return await handleAgentChat(rpcRequest, res);
-      
-      case 'agent.capabilities':
-        return await handleAgentCapabilities(rpcRequest, res);
-      
-      case 'agent.context':
-        return await handleAgentContext(rpcRequest, res);
+      case 'orchestrator.context':
+        return await handleOrchestratorContext(rpcRequest, res);
       
       default:
         return res.json({
@@ -649,8 +622,8 @@ function formatMatrixResults(matrixData) {
 let conversationHistory = [];
 let userContexts = {};
 
-// Agent Chat Handler
-async function handleAgentChat(rpcRequest, res) {
+// Orchestrator Chat Handler
+async function handleOrchestratorChat(rpcRequest, res) {
   try {
     const { message, user_id = 'default', use_llm = false } = rpcRequest.params;
     
@@ -686,8 +659,39 @@ async function handleAgentChat(rpcRequest, res) {
       agent_used = 'maps_agent';
       query_type = 'location';
       
-      // For now, provide a simple response
-      response = `I can help you with location-based queries using TomTom Maps. You asked: "${message}". Please use specific MCP methods like maps.search, maps.directions, etc. for detailed results.`;
+      // Handle location queries by calling TomTom APIs internally
+      if (message.toLowerCase().includes('search') || message.toLowerCase().includes('find')) {
+        // Extract search parameters and call TomTom search
+        const searchQuery = message.replace(/find|search|near|me/gi, '').trim();
+        try {
+          const searchResult = await handleMapSearch({
+            params: {
+              query: searchQuery || 'places',
+              location: { lat: 47.6062, lon: -122.3321 } // Default to Seattle
+            }
+          }, { json: () => ({}) });
+          
+          if (searchResult && searchResult.places && searchResult.places.length > 0) {
+            response = `I found ${searchResult.places.length} places for "${searchQuery}":\n\n`;
+            searchResult.places.slice(0, 3).forEach((place, index) => {
+              response += `${index + 1}. **${place.name}**\n`;
+              response += `   📍 ${place.formatted_address}\n`;
+              if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
+              response += '\n';
+            });
+          } else {
+            response = `I couldn't find any places for "${searchQuery}". Try a different search term or location.`;
+          }
+        } catch (error) {
+          response = `I can help you search for places, but I need more specific information. What are you looking for?`;
+        }
+      } else if (message.toLowerCase().includes('directions') || message.toLowerCase().includes('route')) {
+        response = 'I can help you get directions! Please provide both your starting location and destination. For example: "How do I get from Seattle to Portland?"';
+      } else if (message.toLowerCase().includes('coordinates') || message.toLowerCase().includes('address')) {
+        response = 'I can help you find coordinates for addresses or addresses for coordinates. Please provide the specific address or coordinates you need.';
+      } else {
+        response = `I can help you with location-based queries using TomTom Maps. You asked: "${message}". I can search for places, get directions, find coordinates, and more. What would you like to do?`;
+      }
     } else {
       agent_used = 'general_ai_agent';
       query_type = 'general';
@@ -739,34 +743,38 @@ async function handleAgentChat(rpcRequest, res) {
   }
 }
 
-// Agent Capabilities Handler
-async function handleAgentCapabilities(rpcRequest, res) {
+// Orchestrator Capabilities Handler
+async function handleOrchestratorCapabilities(rpcRequest, res) {
   try {
     const capabilities = {
-      agents: {
-        maps_agent: {
-          description: 'Handles location-based queries using TomTom Maps',
-          capabilities: ['location_search', 'geocoding', 'reverse_geocoding', 'routing', 'static_maps', 'matrix_routing']
-        },
-        general_ai_agent: {
-          description: 'Handles general knowledge and conversational queries',
-          capabilities: ['general_knowledge', 'conversation', 'help_queries']
-        },
-        context_manager: {
-          description: 'Manages user context and conversation history',
-          capabilities: ['context_management', 'user_preferences', 'conversation_history']
-        }
+      orchestrator: {
+        description: 'Multi-agent orchestrator that coordinates specialized agents',
+        capabilities: [
+          'natural_language_processing',
+          'query_routing',
+          'agent_coordination',
+          'response_synthesis'
+        ]
+      },
+      available_services: {
+        location_services: [
+          'place_search',
+          'geocoding',
+          'reverse_geocoding',
+          'directions',
+          'static_maps',
+          'matrix_routing'
+        ],
+        general_services: [
+          'conversation',
+          'help_queries',
+          'context_management'
+        ]
       },
       mcp_methods: [
-        'maps.search',
-        'maps.geocode',
-        'maps.reverseGeocode',
-        'maps.directions',
-        'maps.staticMap',
-        'maps.matrix',
-        'agent.chat',
-        'agent.capabilities',
-        'agent.context'
+        'orchestrator.chat',
+        'orchestrator.capabilities',
+        'orchestrator.context'
       ]
     };
     
@@ -789,8 +797,8 @@ async function handleAgentCapabilities(rpcRequest, res) {
   }
 }
 
-// Agent Context Handler
-async function handleAgentContext(rpcRequest, res) {
+// Orchestrator Context Handler
+async function handleOrchestratorContext(rpcRequest, res) {
   try {
     const { user_id = 'default', context, action = 'get' } = rpcRequest.params;
     
