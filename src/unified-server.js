@@ -234,35 +234,119 @@ function getConversationContext(userId, limit = 10) {
   return userContext.conversationHistory.slice(-limit);
 }
 
-// Location extraction from natural language
-function extractLocationFromMessage(message, userContext) {
+// LLM-based context extraction and intent understanding
+async function extractContextAndIntent(message, userContext, conversationContext) {
+  const contextPrompt = `You are a context extraction assistant for a location-based chatbot. 
+
+User's current message: "${message}"
+
+Previous conversation context:
+${conversationContext.map(msg => `${msg.type}: ${msg.message}`).join('\n')}
+
+User's stored context:
+- Last location: ${userContext.lastLocation ? JSON.stringify(userContext.lastLocation) : 'None'}
+- Last coordinates: ${userContext.lastCoordinates ? JSON.stringify(userContext.lastCoordinates) : 'None'}
+
+Analyze the user's message and extract:
+1. Intent: What does the user want to do? (search_places, geocode, directions, general_chat, etc.)
+2. Location context: What location should be used? Extract from message or use context
+3. Search query: What should be searched for?
+4. Tool needed: Which tool should be called?
+
+Respond with a JSON object in this exact format:
+{
+  "intent": "search_places|geocode|directions|general_chat",
+  "location_context": {
+    "source": "coordinates|address|context_reference|none",
+    "coordinates": {"lat": number, "lon": number} | null,
+    "address": "string" | null
+  },
+  "search_query": "string" | null,
+  "tool_needed": "search_places|geocode_address|reverse_geocode|calculate_route|static_map|none",
+  "confidence": 0.0-1.0
+}`;
+
+  try {
+    let llmResponse = '';
+    if (OPENAI_API_KEY) {
+      llmResponse = await callOpenAI(contextPrompt, '', userContext.userId || 'default');
+    } else if (ANTHROPIC_API_KEY) {
+      llmResponse = await callAnthropic(contextPrompt, '', userContext.userId || 'default');
+    } else {
+      // Fallback to simple pattern matching if no LLM available
+      return fallbackContextExtraction(message, userContext);
+    }
+
+    // Parse LLM response
+    const jsonMatch = llmResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return parsed;
+    } else {
+      throw new Error('No valid JSON found in LLM response');
+    }
+  } catch (error) {
+    console.warn('LLM context extraction failed, using fallback:', error.message);
+    return fallbackContextExtraction(message, userContext);
+  }
+}
+
+// Fallback context extraction for when LLM is not available
+function fallbackContextExtraction(message, userContext) {
   // Look for coordinates pattern
   const coordPattern = /(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/;
   const coordMatch = message.match(coordPattern);
   if (coordMatch) {
     return {
-      source: 'coordinates',
-      lat: parseFloat(coordMatch[1]),
-      lon: parseFloat(coordMatch[2])
+      intent: 'search_places',
+      location_context: {
+        source: 'coordinates',
+        coordinates: { lat: parseFloat(coordMatch[1]), lon: parseFloat(coordMatch[2]) },
+        address: null
+      },
+      search_query: 'places',
+      tool_needed: 'search_places',
+      confidence: 0.8
     };
   }
   
   // Look for address patterns
-  const addressPattern = /(\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Place|Pl|Court|Ct|Circle|Cir|Parkway|Pkwy|Highway|Hwy|Freeway|Fwy))/i;
+  const addressPattern = /(\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Place|Pl|Court|Ct|Circle|Cir|Parkway|Pkwy|Highway|Hwy|Freeway|Fwy|Laan|Straat|Weg|Plein|Square|Plaza))/i;
   const addressMatch = message.match(addressPattern);
   if (addressMatch) {
     return {
-      source: 'address',
-      address: addressMatch[1]
+      intent: 'search_places',
+      location_context: {
+        source: 'address',
+        coordinates: null,
+        address: addressMatch[1]
+      },
+      search_query: 'places',
+      tool_needed: 'search_places',
+      confidence: 0.7
     };
   }
   
-  // Use last known location if available
-  if (userContext.lastLocation) {
-    return userContext.lastLocation;
+  // Use context references
+  const referencePattern = /(?:that|this|the)\s+(?:address|location|place)/i;
+  if (referencePattern.test(message) && userContext.lastLocation) {
+    return {
+      intent: 'search_places',
+      location_context: userContext.lastLocation,
+      search_query: 'places',
+      tool_needed: 'search_places',
+      confidence: 0.6
+    };
   }
   
-  return null;
+  // Default to general chat
+  return {
+    intent: 'general_chat',
+    location_context: { source: 'none', coordinates: null, address: null },
+    search_query: null,
+    tool_needed: 'none',
+    confidence: 0.5
+  };
 }
 
 // LLM Integration with Observability
@@ -720,81 +804,53 @@ async function handleOrchestratorChat(rpcRequest, res) {
       message
     });
     
-    // Extract location from message or context
-    const extractedLocation = extractLocationFromMessage(message, userContext);
+    // Use LLM-based context extraction and intent understanding
+    const contextAnalysis = await extractContextAndIntent(message, userContext, conversationContext);
     
-    // Update context with extracted location
-    if (extractedLocation) {
+    // Update context with extracted information
+    if (contextAnalysis.location_context && contextAnalysis.location_context.source !== 'none') {
       updateUserContext(user_id, {
-        lastLocation: extractedLocation,
-        lastCoordinates: extractedLocation.source === 'coordinates' ? 
-          { lat: extractedLocation.lat, lon: extractedLocation.lon } : 
-          userContext.lastCoordinates
+        lastLocation: contextAnalysis.location_context,
+        lastCoordinates: contextAnalysis.location_context.coordinates || userContext.lastCoordinates
       });
     }
     
-    // Simple agent routing logic
+    // Route based on LLM analysis
     let response = '';
     let agent_used = '';
     let query_type = 'general';
     
-    // Check if it's a location query
-    const locationKeywords = ['where', 'location', 'address', 'place', 'find', 'search', 'near', 'nearby', 'directions', 'route', 'coordinates', 'geocode', 'restaurant', 'restaurants', 'closest'];
-    const isLocationQuery = locationKeywords.some(keyword => message.toLowerCase().includes(keyword));
-    
-    if (isLocationQuery) {
+    if (contextAnalysis.intent === 'search_places' && contextAnalysis.tool_needed === 'search_places') {
       agent_used = 'maps_agent';
       query_type = 'location';
       
-      // Call Maps Agent for location queries via internal A2A
       try {
         let searchLocation = null;
-        let searchQuery = message.replace(/find|search|near|me|restaurant|restaurants|closest|to this place|along with distances/gi, '').trim();
-        if (!searchQuery) searchQuery = 'places'; // Default search query
+        let searchQuery = contextAnalysis.search_query || 'places';
 
-        if (extractedLocation && extractedLocation.source === 'coordinates') {
-          searchLocation = { lat: extractedLocation.lat, lon: extractedLocation.lon };
-        } else if (userContext.lastCoordinates) {
-          searchLocation = userContext.lastCoordinates;
-        } else if (extractedLocation && extractedLocation.source === 'address') {
-          // Geocode the address first using internal Maps Agent
-          const geocodeResult = await callMapsAgent('geocode_address', { address: extractedLocation.address });
-          if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
-            const coords = geocodeResult.results[0].position;
-            searchLocation = { lat: coords.lat, lon: coords.lon };
-            updateUserContext(user_id, { lastCoordinates: searchLocation });
+        // Prepare the request for Maps Agent - let it handle all TomTom API calls
+        const mapsAgentRequest = {
+          intent: contextAnalysis.intent,
+          location_context: contextAnalysis.location_context,
+          search_query: contextAnalysis.search_query,
+          tool_needed: contextAnalysis.tool_needed,
+          user_context: {
+            lastLocation: userContext.lastLocation,
+            lastCoordinates: userContext.lastCoordinates
           }
-        }
+        };
 
-        if (!searchLocation) {
-          // Fallback to a default location if no context or extraction
-          searchLocation = { lat: 47.6062, lon: -122.3321 }; // Default to Seattle
-        }
-
-        if (message.toLowerCase().includes('search') || message.toLowerCase().includes('find') || message.toLowerCase().includes('restaurant') || message.toLowerCase().includes('closest')) {
-          const searchResult = await callMapsAgent('search_places', {
-            query: searchQuery,
-            location: searchLocation
-          });
-          
-          if (searchResult && searchResult.places && searchResult.places.length > 0) {
-            response = `I found ${searchResult.places.length} places for "${searchQuery}":\n\n`;
-            searchResult.places.slice(0, 3).forEach((place, index) => {
-              response += `${index + 1}. **${place.name}**\n`;
-              response += `   📍 ${place.formatted_address}\n`;
-              if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
-              if (place.distance) response += `   📏 ${place.distance} km away\n`;
-              response += '\n';
-            });
-          } else {
-            response = `I couldn't find any places for "${searchQuery}" near the specified location. Please try a different search term or provide a more specific location.`;
+        // Call Maps Agent with the complete context - let it handle all TomTom API interactions
+        const mapsResult = await callMapsAgent('process_location_request', mapsAgentRequest);
+        
+        if (mapsResult && mapsResult.success) {
+          response = mapsResult.response;
+          // Update context with any new location information from Maps Agent
+          if (mapsResult.updated_context) {
+            updateUserContext(user_id, mapsResult.updated_context);
           }
-        } else if (message.toLowerCase().includes('directions') || message.toLowerCase().includes('route')) {
-          response = 'I can help you get directions! Please provide both your starting location and destination. For example: "How do I get from Seattle to Portland?"';
-        } else if (message.toLowerCase().includes('coordinates') || message.toLowerCase().includes('address')) {
-          response = 'I can help you find coordinates for addresses or addresses for coordinates. Please provide the specific address or coordinates you need.';
         } else {
-          response = `I can help you with location-based queries using TomTom Maps. You asked: "${message}". I can search for places, get directions, find coordinates, and more. What would you like to do?`;
+          response = mapsResult?.error || "I'm having trouble connecting to the Maps service right now. Please try again later.";
         }
       } catch (error) {
         console.error('Error calling Maps Agent:', error);
@@ -1157,6 +1213,100 @@ async function handleMapsToolsCall(rpcRequest, res) {
   }
 }
 
+// Maps Agent: Process location requests using MCP internally
+async function processLocationRequest(payload) {
+  const { intent, location_context, search_query, tool_needed, user_context } = payload;
+  
+  try {
+    let response = '';
+    let updated_context = null;
+    
+    // Determine search location based on context analysis
+    let searchLocation = null;
+    
+    if (location_context.source === 'coordinates') {
+      searchLocation = location_context.coordinates;
+    } else if (location_context.source === 'address') {
+      // Use MCP to geocode the address
+      const geocodeResult = await geocodeAddress(location_context.address);
+      if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+        const coords = geocodeResult.results[0].position;
+        searchLocation = { lat: coords.lat, lon: coords.lon };
+        updated_context = {
+          lastCoordinates: searchLocation,
+          lastLocation: location_context
+        };
+      }
+    } else if (location_context.source === 'context_reference' && user_context.lastCoordinates) {
+      searchLocation = user_context.lastCoordinates;
+    }
+    
+    if (!searchLocation) {
+      // Fallback to default location
+      searchLocation = { lat: 47.6062, lon: -122.3321 };
+    }
+    
+    // Execute the appropriate MCP tool based on intent
+    switch (tool_needed) {
+      case 'search_places':
+        const searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation);
+        if (searchResult && searchResult.places && searchResult.places.length > 0) {
+          response = `I found ${searchResult.places.length} places for "${search_query || 'places'}":\n\n`;
+          searchResult.places.slice(0, 3).forEach((place, index) => {
+            response += `${index + 1}. **${place.name}**\n`;
+            response += `   📍 ${place.formatted_address}\n`;
+            if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
+            if (place.distance) response += `   📏 ${place.distance} km away\n`;
+            response += '\n';
+          });
+        } else {
+          response = `I couldn't find any places for "${search_query || 'places'}" near the specified location.`;
+        }
+        break;
+        
+      case 'geocode_address':
+        const geocodeResult = await geocodeAddress(location_context.address);
+        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+          const coords = geocodeResult.results[0].position;
+          response = `The coordinates for "${geocodeResult.results[0].address.freeformAddress}" are approximately ${coords.lat.toFixed(6)}° N, ${coords.lon.toFixed(6)}° E.`;
+          updated_context = {
+            lastCoordinates: { lat: coords.lat, lon: coords.lon },
+            lastLocation: { source: 'address', address: geocodeResult.results[0].address.freeformAddress }
+          };
+        } else {
+          response = `I couldn't find coordinates for that address.`;
+        }
+        break;
+        
+      case 'reverse_geocode':
+        const reverseResult = await reverseGeocode(location_context.coordinates.lat, location_context.coordinates.lon);
+        if (reverseResult && reverseResult.addresses && reverseResult.addresses.length > 0) {
+          response = `The address for coordinates ${location_context.coordinates.lat}, ${location_context.coordinates.lon} is: ${reverseResult.addresses[0].address.freeformAddress}`;
+        } else {
+          response = `I couldn't find an address for those coordinates.`;
+        }
+        break;
+        
+      default:
+        response = `I can help you with location-based queries. What would you like to do?`;
+    }
+    
+    return {
+      success: true,
+      response: response,
+      updated_context: updated_context
+    };
+    
+  } catch (error) {
+    console.error('Error in processLocationRequest:', error);
+    return {
+      success: false,
+      error: error.message,
+      response: "I'm having trouble processing your location request. Please try again."
+    };
+  }
+}
+
 // A2A Message Processing for Maps Agent
 mapsA2A.processA2AMessage = async function(a2aMessage) {
   const { type, payload } = a2aMessage.message;
@@ -1177,6 +1327,9 @@ mapsA2A.processA2AMessage = async function(a2aMessage) {
         
       case 'generate_static_map':
         return { url: await generateStaticMapUrl(payload.center, payload.zoom, payload.markers) };
+        
+      case 'process_location_request':
+        return await processLocationRequest(payload);
         
       case 'get_capabilities':
         return {
