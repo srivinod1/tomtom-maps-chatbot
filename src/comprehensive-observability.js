@@ -9,24 +9,37 @@ const { Logging } = require('@google-cloud/logging');
 const monitoring = require('@google-cloud/monitoring');
 
 class ComprehensiveObservability {
-  constructor(projectId, location = 'us-central1') {
+  constructor(projectId, location = 'us-central1', credentials = null) {
     this.projectId = projectId;
     this.location = location;
+    
+    // Parse credentials if provided as JSON string
+    let parsedCredentials = null;
+    if (credentials) {
+      try {
+        parsedCredentials = typeof credentials === 'string' ? JSON.parse(credentials) : credentials;
+      } catch (error) {
+        console.warn('Warning: Failed to parse credentials JSON:', error.message);
+      }
+    }
     
     // Initialize Vertex AI
     this.vertexAI = new VertexAI({
       project: projectId,
-      location: location
+      location: location,
+      ...(parsedCredentials && { credentials: parsedCredentials })
     });
     
     // Initialize Cloud Logging
     this.logging = new Logging({
-      projectId: projectId
+      projectId: projectId,
+      ...(parsedCredentials && { credentials: parsedCredentials })
     });
     
     // Initialize Cloud Monitoring
     this.monitoring = new monitoring.MetricServiceClient({
-      projectId: projectId
+      projectId: projectId,
+      ...(parsedCredentials && { credentials: parsedCredentials })
     });
     
     // Create log names for different components

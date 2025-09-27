@@ -204,8 +204,12 @@ let conversationHistory = [];
 let userContexts = {};
 
 // Initialize Comprehensive Observability
-const observability = process.env.GOOGLE_CLOUD_PROJECT ? 
-  new ComprehensiveObservability(process.env.GOOGLE_CLOUD_PROJECT) : 
+const observability = process.env.GOOGLE_CLOUD_PROJECT ?
+  new ComprehensiveObservability(
+    process.env.GOOGLE_CLOUD_PROJECT, 
+    'us-central1', 
+    process.env.GOOGLE_APPLICATION_CREDENTIALS
+  ) :
   null;
 
 // User Context Management
