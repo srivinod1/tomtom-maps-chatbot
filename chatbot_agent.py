@@ -23,16 +23,10 @@ logger = logging.getLogger(__name__)
 class TomTomChatbotAgent:
     """Chatbot agent that combines TomTom MCP tools with general knowledge"""
     
-    def __init__(self, mcp_server_url: str = "http://localhost:3000", use_direct_api: bool = False):
+    def __init__(self, mcp_server_url: str = "http://localhost:3000"):
         self.mcp_server_url = mcp_server_url
-        self.use_direct_api = use_direct_api
         self.conversation_history = []
         self.user_context = {}
-        
-        # TomTom API key
-        self.tomtom_api_key = os.getenv('TOMTOM_API_KEY')
-        if not self.tomtom_api_key:
-            raise ValueError("TOMTOM_API_KEY environment variable is required")
         
         # TomTom MCP methods
         self.tomtom_methods = {
@@ -44,11 +38,8 @@ class TomTomChatbotAgent:
             'matrix': 'maps.matrix'
         }
         
-        # Initialize connection
-        if use_direct_api:
-            logger.info("✅ Using direct TomTom API calls")
-        else:
-            self._initialize_mcp()
+        # Initialize MCP connection
+        self._initialize_mcp()
     
     def _initialize_mcp(self):
         """Initialize connection to TomTom MCP server"""
@@ -74,10 +65,7 @@ class TomTomChatbotAgent:
             return False
     
     def _call_mcp_method(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Call a TomTom MCP method or direct API"""
-        if self.use_direct_api:
-            return self._call_direct_api(method, params)
-        
+        """Call a TomTom MCP method"""
         try:
             response = requests.post(self.mcp_server_url, json={
                 "jsonrpc": "2.0",
@@ -100,286 +88,6 @@ class TomTomChatbotAgent:
             logger.error(f"Error calling MCP method {method}: {e}")
             return {"error": str(e)}
     
-    def _call_direct_api(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Call TomTom API directly"""
-        try:
-            if method == 'maps.search':
-                return self._direct_search(params)
-            elif method == 'maps.directions':
-                return self._direct_directions(params)
-            elif method == 'maps.geocode':
-                return self._direct_geocode(params)
-            elif method == 'maps.reverseGeocode':
-                return self._direct_reverse_geocode(params)
-            elif method == 'maps.staticMap':
-                return self._direct_static_map(params)
-            elif method == 'maps.matrix':
-                return self._direct_matrix(params)
-            else:
-                return {"error": f"Unknown method: {method}"}
-        except Exception as e:
-            logger.error(f"Error calling direct API {method}: {e}")
-            return {"error": str(e)}
-    
-    def _direct_search(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Direct TomTom search API call"""
-        query = params.get("query", "")
-        location = params.get("location", {})
-        
-        url = "https://api.tomtom.com/maps/orbis/places/nearbySearch/.json"
-        request_params = {
-            "key": self.tomtom_api_key,
-            "apiVersion": "1",
-            "query": query
-        }
-        
-        if location and "lat" in location and "lon" in location:
-            request_params["lat"] = location["lat"]
-            request_params["lon"] = location["lon"]
-        
-        response = requests.get(url, params=request_params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return self._format_search_results(data)
-        else:
-            return {"error": f"Search API error: {response.status_code}"}
-    
-    def _direct_directions(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Direct TomTom directions API call"""
-        origin = params.get("origin", {})
-        destination = params.get("destination", {})
-        travel_mode = params.get("travelMode", "car")
-        
-        if not origin or not destination:
-            return {"error": "Origin and destination are required"}
-        
-        origin_str = f"{origin['lat']},{origin['lon']}"
-        dest_str = f"{destination['lat']},{destination['lon']}"
-        
-        url = f"https://api.tomtom.com/maps/orbis/routing/calculateRoute/{origin_str}:{dest_str}/json"
-        request_params = {
-            "key": self.tomtom_api_key,
-            "apiVersion": "2",
-            "travelMode": travel_mode,
-            "traffic": "live",
-            "routeType": "efficient"
-        }
-        
-        headers = {"TomTom-Api-Version": "2"}
-        
-        response = requests.get(url, params=request_params, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return self._format_route_results(data)
-        else:
-            return {"error": f"Directions API error: {response.status_code}"}
-    
-    def _direct_geocode(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Direct TomTom geocoding API call"""
-        address = params.get("address", "")
-        
-        if not address:
-            return {"error": "Address is required"}
-        
-        url = f"https://api.tomtom.com/search/2/geocode/{requests.utils.quote(address)}.json"
-        request_params = {
-            "key": self.tomtom_api_key,
-            "language": "en-US"
-        }
-        
-        response = requests.get(url, params=request_params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return self._format_geocode_results(data)
-        else:
-            return {"error": f"Geocoding API error: {response.status_code}"}
-    
-    def _direct_reverse_geocode(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Direct TomTom reverse geocoding API call"""
-        lat = params.get("lat")
-        lon = params.get("lon")
-        
-        if lat is None or lon is None:
-            return {"error": "Latitude and longitude are required"}
-        
-        url = f"https://api.tomtom.com/search/2/reverseGeocode/{lat},{lon}.json"
-        request_params = {
-            "key": self.tomtom_api_key,
-            "language": "en-US"
-        }
-        
-        response = requests.get(url, params=request_params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return self._format_reverse_geocode_results(data)
-        else:
-            return {"error": f"Reverse geocoding API error: {response.status_code}"}
-    
-    def _direct_static_map(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Direct TomTom static map API call"""
-        lat = params.get("lat")
-        lon = params.get("lon")
-        zoom = params.get("zoom", 15)
-        width = params.get("width", 512)
-        height = params.get("height", 512)
-        
-        if lat is None or lon is None:
-            return {"error": "Latitude and longitude are required"}
-        
-        url = "https://api.tomtom.com/map/1/staticimage"
-        request_params = {
-            "key": self.tomtom_api_key,
-            "center": f"{lat},{lon}",
-            "zoom": zoom,
-            "width": width,
-            "height": height,
-            "format": "png"
-        }
-        
-        return {"url": f"{url}?{'&'.join([f'{k}={v}' for k, v in request_params.items()])}"}
-    
-    def _direct_matrix(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Direct TomTom matrix API call"""
-        origins = params.get("origins", [])
-        destinations = params.get("destinations", [])
-        travel_mode = params.get("travelMode", "car")
-        
-        if not origins or not destinations:
-            return {"error": "Origins and destinations are required"}
-        
-        # Format for TomTom Matrix API
-        formatted_origins = [{"point": {"latitude": o["lat"], "longitude": o["lon"]}} for o in origins]
-        formatted_destinations = [{"point": {"latitude": d["lat"], "longitude": d["lon"]}} for d in destinations]
-        
-        url = "https://api.tomtom.com/routing/matrix/2"
-        request_params = {"key": self.tomtom_api_key}
-        
-        request_data = {
-            "origins": formatted_origins,
-            "destinations": formatted_destinations,
-            "options": {"travelMode": travel_mode}
-        }
-        
-        response = requests.post(url, params=request_params, json=request_data, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            return self._format_matrix_results(data)
-        else:
-            return {"error": f"Matrix API error: {response.status_code}"}
-    
-    def _format_search_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format search results from TomTom API"""
-        if "results" not in data:
-            return {"places": []}
-        
-        places = []
-        for result in data["results"][:10]:  # Limit to 10 results
-            place = {
-                "name": result.get("poi", {}).get("name", "Unknown"),
-                "formatted_address": result.get("address", {}).get("freeformAddress", "Unknown address"),
-                "location": {
-                    "lat": result.get("position", {}).get("lat", 0),
-                    "lng": result.get("position", {}).get("lon", 0)
-                },
-                "rating": result.get("poi", {}).get("rating", 0)
-            }
-            places.append(place)
-        
-        return {"places": places}
-    
-    def _format_route_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format route results from TomTom API"""
-        if "routes" not in data or not data["routes"]:
-            return {"routes": []}
-        
-        route = data["routes"][0]
-        summary = route.get("summary", {})
-        
-        formatted_route = {
-            "summary": {
-                "distance": {
-                    "text": f"{summary.get('lengthInMeters', 0) / 1000:.1f} km",
-                    "value": summary.get('lengthInMeters', 0)
-                },
-                "duration": {
-                    "text": f"{summary.get('travelTimeInSeconds', 0) // 60} mins",
-                    "value": summary.get('travelTimeInSeconds', 0)
-                }
-            },
-            "steps": []
-        }
-        
-        # Add steps if available
-        if "legs" in route and route["legs"]:
-            for leg in route["legs"]:
-                if "points" in leg:
-                    for point in leg["points"]:
-                        if "instruction" in point:
-                            formatted_route["steps"].append({
-                                "html_instructions": point["instruction"]["text"]
-                            })
-        
-        return {"routes": [formatted_route]}
-    
-    def _format_geocode_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format geocoding results from TomTom API"""
-        if "results" not in data:
-            return {"results": []}
-        
-        formatted_results = []
-        for result in data["results"]:
-            formatted_result = {
-                "formatted_address": result.get("address", {}).get("freeformAddress", ""),
-                "geometry": {
-                    "location": {
-                        "lat": result.get("position", {}).get("lat", 0),
-                        "lng": result.get("position", {}).get("lon", 0)
-                    }
-                },
-                "place_id": result.get("id", "")
-            }
-            formatted_results.append(formatted_result)
-        
-        return {"results": formatted_results}
-    
-    def _format_reverse_geocode_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format reverse geocoding results from TomTom API"""
-        if "addresses" not in data or not data["addresses"]:
-            return {"results": []}
-        
-        address = data["addresses"][0]
-        formatted_result = {
-            "formatted_address": address.get("address", {}).get("freeformAddress", "")
-        }
-        
-        return {"results": [formatted_result]}
-    
-    def _format_matrix_results(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Format matrix results from TomTom API"""
-        if "data" not in data:
-            return {"rows": []}
-        
-        elements = []
-        for item in data["data"]:
-            summary = item.get("routeSummary", {})
-            elements.append({
-                "status": "OK",
-                "distance": {
-                    "value": summary.get("lengthInMeters", 0),
-                    "text": f"{summary.get('lengthInMeters', 0) / 1000:.1f} km"
-                },
-                "duration": {
-                    "value": summary.get("travelTimeInSeconds", 0),
-                    "text": f"{summary.get('travelTimeInSeconds', 0) // 60} mins"
-                }
-            })
-        
-        return {"rows": [{"elements": elements}]}
     
     def _extract_location_from_query(self, query: str) -> Optional[Dict[str, float]]:
         """Extract location coordinates from user query or context"""

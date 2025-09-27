@@ -15,35 +15,60 @@ This guide explains how to deploy the TomTom Maps Chatbot Agent to Railway.
 Ensure your repository contains:
 - `app.py` - Flask API server
 - `chatbot_agent.py` - Chatbot agent logic
+- `src/mcp-server.js` - TomTom MCP server
 - `requirements.txt` - Python dependencies
-- `railway.json` - Railway configuration
-- `Procfile` - Process definition
+- `package.json` - Node.js dependencies
+- `railway.json` - Railway configuration for Flask app
+- `railway-mcp.json` - Railway configuration for MCP server
+- `Procfile` - Process definition for Flask app
+- `Procfile-mcp` - Process definition for MCP server
 - `runtime.txt` - Python version
 - `.env.example` - Environment variables template
 
 ### 2. Deploy to Railway
 
-#### Option A: Deploy from GitHub
+You need to deploy **TWO services** on Railway:
 
-1. **Connect GitHub**:
+#### Service 1: TomTom MCP Server
+
+1. **Create First Service**:
    - Go to [Railway Dashboard](https://railway.app/dashboard)
    - Click "New Project"
    - Select "Deploy from GitHub repo"
    - Choose your repository
+   - **Rename the service to "mcp-server"**
 
-2. **Configure Environment Variables**:
-   - Go to your project settings
-   - Add the following environment variables:
-   ```
-   TOMTOM_API_KEY=your_tomtom_api_key_here
-   RAILWAY_ENVIRONMENT=production
-   FLASK_ENV=production
-   ```
+2. **Configure MCP Server**:
+   - In the service settings, set the **Root Directory** to the repository root
+   - Set **Build Command** to: `npm install`
+   - Set **Start Command** to: `npm start`
+   - Add environment variable:
+     ```
+     TOMTOM_API_KEY=your_tomtom_api_key_here
+     ```
 
-3. **Deploy**:
-   - Railway will automatically detect your Python app
-   - It will install dependencies from `requirements.txt`
-   - The app will start using the `Procfile`
+3. **Get MCP Server URL**:
+   - After deployment, copy the service URL (e.g., `https://mcp-server-production-xxx.up.railway.app`)
+   - This will be your `MCP_SERVER_URL`
+
+#### Service 2: Flask API Server
+
+1. **Add Second Service**:
+   - In the same Railway project, click "New Service"
+   - Select "Deploy from GitHub repo"
+   - Choose the same repository
+   - **Rename the service to "api-server"**
+
+2. **Configure Flask Server**:
+   - In the service settings, set the **Root Directory** to the repository root
+   - Set **Build Command** to: `pip install -r requirements.txt`
+   - Set **Start Command** to: `python app.py`
+   - Add environment variables:
+     ```
+     TOMTOM_API_KEY=your_tomtom_api_key_here
+     MCP_SERVER_URL=https://mcp-server-production-xxx.up.railway.app
+     FLASK_ENV=production
+     ```
 
 #### Option B: Deploy with Railway CLI
 
@@ -65,7 +90,7 @@ Ensure your repository contains:
 4. **Set Environment Variables**:
    ```bash
    railway variables set TOMTOM_API_KEY=your_tomtom_api_key_here
-   railway variables set RAILWAY_ENVIRONMENT=production
+   railway variables set MCP_SERVER_URL=http://localhost:3000
    railway variables set FLASK_ENV=production
    ```
 
@@ -86,7 +111,7 @@ Ensure your repository contains:
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `TOMTOM_API_KEY` | Your TomTom API key | Yes | - |
-| `RAILWAY_ENVIRONMENT` | Railway environment flag | No | - |
+| `MCP_SERVER_URL` | URL of the TomTom MCP server | No | `http://localhost:3000` |
 | `FLASK_ENV` | Flask environment | No | `production` |
 | `PORT` | Port for the Flask app | No | `5000` (Railway sets this) |
 
