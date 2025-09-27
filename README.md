@@ -1,16 +1,17 @@
-# TomTom Maps Chatbot Agent
+# Multi-Agent TomTom Maps MCP Server
 
-A powerful chatbot agent that combines TomTom Maps API with general knowledge to answer location-based queries. Deployable on Railway with a Flask API backend.
+A multi-agent system that combines TomTom Maps API with general knowledge through a standardized MCP (Model Context Protocol) interface. Built with Google ADK for agent coordination.
 
 ## 🚀 Features
 
+- **🤖 Multi-Agent Architecture**: Specialized agents for different query types
 - **🗺️ Location Search**: Find restaurants, hotels, gas stations, and more
 - **🚗 Directions**: Get turn-by-turn directions between locations
 - **📍 Geocoding**: Convert addresses to coordinates and vice versa
 - **🗺️ Static Maps**: Generate map images for locations
 - **📊 Matrix Routing**: Calculate distance/time matrices
-- **💬 Conversational AI**: Natural language processing for location queries
-- **🔧 REST API**: Easy integration with any frontend
+- **💬 MCP Chat Interface**: Natural language conversation through MCP
+- **🧠 Context Management**: User preferences and conversation history
 - **☁️ Railway Ready**: One-click deployment to Railway
 
 ## 🏗️ Architecture
@@ -18,11 +19,12 @@ A powerful chatbot agent that combines TomTom Maps API with general knowledge to
 ```
 Frontend (Your App)
        ↓
-Flask API Server (app.py)
+Multi-Agent MCP Server (src/mcp-server.js)
        ↓
-Chatbot Agent (chatbot_agent.py)
-       ↓
-TomTom MCP Server (src/mcp-server.js)
+┌─────────────────┬─────────────────┬─────────────────┐
+│   Maps Agent    │  General AI     │  Context        │
+│   (TomTom)      │    Agent        │  Manager        │
+└─────────────────┴─────────────────┴─────────────────┘
        ↓
 TomTom Maps API
 ```
@@ -133,30 +135,23 @@ The chatbot can handle various types of location queries:
 
 ## 🚂 Railway Deployment
 
-### Option 1: Deploy from GitHub
+### Deploy Multi-Agent MCP Server
 
-1. Push your code to GitHub
+1. **Push to GitHub**:
+   ```bash
+   git add .
+   git commit -m "Multi-agent MCP server"
+   git push origin main
+   ```
+
 2. Go to [Railway](https://railway.app)
-3. Create new project from GitHub repo
-4. Set environment variables:
-   ```
-   TOMTOM_API_KEY=your_api_key_here
-   MCP_SERVER_URL=http://localhost:3000
-   FLASK_ENV=production
-   ```
-5. Deploy!
+3. Click "New Project" → "Deploy from GitHub repo"
+4. Select your repository
+5. Railway will automatically detect it's a Node.js app
+6. Add environment variables in Railway dashboard:
+   - `TOMTOM_API_KEY`: Your TomTom API key
 
-### Option 2: Railway CLI
-
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login and deploy
-railway login
-railway init
-railway up
-```
+The MCP server will be available at your Railway URL for frontend integration.
 
 See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for detailed instructions.
 
@@ -164,25 +159,27 @@ See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for detailed instructions.
 
 ### Run All Tests
 ```bash
+# Test Multi-Agent MCP server
+python test_mcp_multi_agent.py
+
 # Test TomTom MCP server
 python test_all_endpoints.py
-
-# Test Flask API
-python test_api.py
-
-# Test chatbot integration
-python test_agent_queries.py
 ```
 
 ### Manual Testing
 ```bash
-# Test health endpoint
-curl http://localhost:5001/
+# Start the MCP server
+npm start
 
-# Test chat endpoint
-curl -X POST http://localhost:5001/api/chat \
+# Test agent capabilities
+curl -X POST http://localhost:3000 \
   -H "Content-Type: application/json" \
-  -d '{"message": "Find restaurants near 47.6062, -122.3321"}'
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.capabilities"}'
+
+# Test agent chat
+curl -X POST http://localhost:3000 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.chat", "params": {"message": "Find coffee shops near me", "user_id": "test_user"}}'
 ```
 
 ## 🔧 Frontend Integration
@@ -190,14 +187,19 @@ curl -X POST http://localhost:5001/api/chat \
 ### JavaScript Example
 ```javascript
 async function sendMessage(message, userId = 'default') {
-  const response = await fetch('https://your-app.railway.app/api/chat', {
+  const response = await fetch('https://your-mcp-server.railway.app', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, user_id: userId })
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'agent.chat',
+      params: { message, user_id: userId }
+    })
   });
   
   const data = await response.json();
-  return data.response;
+  return data.result.response;
 }
 
 // Usage

@@ -1,4 +1,5 @@
 // src/mcp-server.js
+// Multi-Agent MCP Server with TomTom Maps Integration
 const express = require('express');
 const bodyParser = require('body-parser');
 const axios = require('axios');
@@ -47,11 +48,18 @@ app.post('/', async (req, res) => {
                 geocode: true,
                 reverseGeocode: true,
                 matrix: true
+              },
+              agents: {
+                orchestrator: true,
+                maps: true,
+                general_ai: true,
+                context_manager: true
               }
             },
             serverInfo: {
-              name: 'tomtom-mcp-server',
-              version: '1.0.0'
+              name: 'multi-agent-tomtom-mcp-server',
+              version: '2.0.0',
+              description: 'Multi-agent MCP server with TomTom Maps integration'
             }
           }
         });
@@ -73,6 +81,15 @@ app.post('/', async (req, res) => {
       
       case 'maps.matrix':
         return await handleMatrix(rpcRequest, res);
+      
+      case 'agent.chat':
+        return await handleAgentChat(rpcRequest, res);
+      
+      case 'agent.capabilities':
+        return await handleAgentCapabilities(rpcRequest, res);
+      
+      case 'agent.context':
+        return await handleAgentContext(rpcRequest, res);
       
       default:
         return res.json({
@@ -614,8 +631,195 @@ function formatMatrixResults(matrixData) {
   };
 }
 
+// Multi-Agent System State
+let conversationHistory = [];
+let userContexts = {};
+
+// Agent Chat Handler
+async function handleAgentChat(rpcRequest, res) {
+  try {
+    const { message, user_id = 'default', use_llm = false } = rpcRequest.params;
+    
+    if (!message) {
+      return res.json({
+        jsonrpc: '2.0',
+        id: rpcRequest.id,
+        error: {
+          code: -32602,
+          message: 'Message parameter is required'
+        }
+      });
+    }
+    
+    // Store user message
+    conversationHistory.push({
+      timestamp: new Date().toISOString(),
+      user_id,
+      type: 'user',
+      message
+    });
+    
+    // Simple agent routing logic
+    let response = '';
+    let agent_used = '';
+    let query_type = 'general';
+    
+    // Check if it's a location query
+    const locationKeywords = ['where', 'location', 'address', 'place', 'find', 'search', 'near', 'nearby', 'directions', 'route', 'coordinates', 'geocode'];
+    const isLocationQuery = locationKeywords.some(keyword => message.toLowerCase().includes(keyword));
+    
+    if (isLocationQuery) {
+      agent_used = 'maps_agent';
+      query_type = 'location';
+      
+      // For now, provide a simple response
+      response = `I can help you with location-based queries using TomTom Maps. You asked: "${message}". Please use specific MCP methods like maps.search, maps.directions, etc. for detailed results.`;
+    } else {
+      agent_used = 'general_ai_agent';
+      query_type = 'general';
+      
+      // Simple general responses
+      if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
+        response = 'Hello! I\'m your multi-agent assistant. I can help you with location searches, directions, geocoding, and general questions. What would you like to know?';
+      } else if (message.toLowerCase().includes('help')) {
+        response = 'I can help you with:\n- Location searches using TomTom Maps\n- Getting directions between places\n- Finding coordinates for addresses\n- General questions and conversation\n\nWhat would you like to do?';
+      } else {
+        response = `I understand you're asking: "${message}". I can help with location-based queries using TomTom Maps or answer general questions. Could you be more specific about what you need?`;
+      }
+    }
+    
+    // Store assistant response
+    conversationHistory.push({
+      timestamp: new Date().toISOString(),
+      user_id,
+      type: 'assistant',
+      message: response,
+      metadata: {
+        agent_used,
+        query_type
+      }
+    });
+    
+    return res.json({
+      jsonrpc: '2.0',
+      id: rpcRequest.id,
+      result: {
+        response,
+        agent_used,
+        query_type,
+        timestamp: new Date().toISOString(),
+        success: true
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error in agent chat:', error);
+    return res.json({
+      jsonrpc: '2.0',
+      id: rpcRequest.id,
+      error: {
+        code: -32603,
+        message: `Internal error: ${error.message}`
+      }
+    });
+  }
+}
+
+// Agent Capabilities Handler
+async function handleAgentCapabilities(rpcRequest, res) {
+  try {
+    const capabilities = {
+      agents: {
+        maps_agent: {
+          description: 'Handles location-based queries using TomTom Maps',
+          capabilities: ['location_search', 'geocoding', 'reverse_geocoding', 'routing', 'static_maps', 'matrix_routing']
+        },
+        general_ai_agent: {
+          description: 'Handles general knowledge and conversational queries',
+          capabilities: ['general_knowledge', 'conversation', 'help_queries']
+        },
+        context_manager: {
+          description: 'Manages user context and conversation history',
+          capabilities: ['context_management', 'user_preferences', 'conversation_history']
+        }
+      },
+      mcp_methods: [
+        'maps.search',
+        'maps.geocode',
+        'maps.reverseGeocode',
+        'maps.directions',
+        'maps.staticMap',
+        'maps.matrix',
+        'agent.chat',
+        'agent.capabilities',
+        'agent.context'
+      ]
+    };
+    
+    return res.json({
+      jsonrpc: '2.0',
+      id: rpcRequest.id,
+      result: capabilities
+    });
+    
+  } catch (error) {
+    console.error('Error in agent capabilities:', error);
+    return res.json({
+      jsonrpc: '2.0',
+      id: rpcRequest.id,
+      error: {
+        code: -32603,
+        message: `Internal error: ${error.message}`
+      }
+    });
+  }
+}
+
+// Agent Context Handler
+async function handleAgentContext(rpcRequest, res) {
+  try {
+    const { user_id = 'default', context, action = 'get' } = rpcRequest.params;
+    
+    if (action === 'set' && context) {
+      if (!userContexts[user_id]) {
+        userContexts[user_id] = {};
+      }
+      userContexts[user_id] = { ...userContexts[user_id], ...context };
+      
+      return res.json({
+        jsonrpc: '2.0',
+        id: rpcRequest.id,
+        result: {
+          status: 'success',
+          message: 'Context updated',
+          context: userContexts[user_id]
+        }
+      });
+    } else {
+      return res.json({
+        jsonrpc: '2.0',
+        id: rpcRequest.id,
+        result: {
+          context: userContexts[user_id] || {}
+        }
+      });
+    }
+    
+  } catch (error) {
+    console.error('Error in agent context:', error);
+    return res.json({
+      jsonrpc: '2.0',
+      id: rpcRequest.id,
+      error: {
+        code: -32603,
+        message: `Internal error: ${error.message}`
+      }
+    });
+  }
+}
+
 // Start MCP server
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.error(`TomTom Maps MCP Server listening at http://localhost:${port}`);
+  console.error(`Multi-Agent TomTom Maps MCP Server listening at http://localhost:${port}`);
 });
