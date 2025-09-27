@@ -9,7 +9,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const A2AProtocol = require('./a2a-protocol');
-const VertexAIObservability = require('./vertex-observability');
+const ComprehensiveObservability = require('./comprehensive-observability');
 require('dotenv').config();
 
 // Constants for LLM APIs
@@ -173,17 +173,17 @@ app.get('/agents', (req, res) => {
   });
 });
 
-// Analytics endpoint for Vertex AI observability
+// Comprehensive Analytics endpoint
 app.get('/analytics', async (req, res) => {
   try {
-    if (!vertexObservability) {
+    if (!observability) {
       return res.json({
-        error: 'Vertex AI Observability not configured',
+        error: 'Comprehensive Observability not configured',
         message: 'Set GOOGLE_CLOUD_PROJECT environment variable to enable observability'
       });
     }
 
-    const analytics = await vertexObservability.getToolCallAnalytics(req.query.timeRange || '1h');
+    const analytics = await observability.getComprehensiveAnalytics(req.query.timeRange || '1h');
     
     res.json({
       success: true,
@@ -203,9 +203,9 @@ app.get('/analytics', async (req, res) => {
 let conversationHistory = [];
 let userContexts = {};
 
-// Initialize Vertex AI Observability
-const vertexObservability = process.env.GOOGLE_CLOUD_PROJECT ? 
-  new VertexAIObservability(process.env.GOOGLE_CLOUD_PROJECT) : 
+// Initialize Comprehensive Observability
+const observability = process.env.GOOGLE_CLOUD_PROJECT ? 
+  new ComprehensiveObservability(process.env.GOOGLE_CLOUD_PROJECT) : 
   null;
 
 // User Context Management
@@ -261,8 +261,25 @@ function extractLocationFromMessage(message, userContext) {
   return null;
 }
 
-// LLM Integration
-async function callOpenAI(message, context = '') {
+// LLM Integration with Observability
+async function callOpenAI(message, context = '', userId = 'anonymous') {
+  const startTime = Date.now();
+  const correlationId = `openai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const llmCall = {
+    component: 'llmCalls',
+    provider: 'openai',
+    model: 'gpt-3.5-turbo',
+    prompt: `${context}\n\n${message}`,
+    userId: userId,
+    correlationId: correlationId,
+    success: false,
+    response: null,
+    tokensUsed: 0,
+    error: null,
+    duration: 0
+  };
+
   try {
     const response = await axios.post('https://api.openai.com/v1/chat/completions', {
       model: 'gpt-3.5-turbo',
@@ -279,14 +296,56 @@ async function callOpenAI(message, context = '') {
       }
     });
     
-    return response.data.choices[0].message.content;
+    const content = response.data.choices[0].message.content;
+    const tokensUsed = response.data.usage?.total_tokens || 0;
+    
+    // Update LLM call with success
+    llmCall.success = true;
+    llmCall.response = content;
+    llmCall.tokensUsed = tokensUsed;
+    llmCall.duration = Date.now() - startTime;
+    
+    // Observe the LLM call
+    if (observability) {
+      await observability.observeOperation(llmCall);
+    }
+    
+    return content;
   } catch (error) {
     console.error('OpenAI API error:', error.response?.data || error.message);
+    
+    // Update LLM call with error
+    llmCall.success = false;
+    llmCall.error = error.message;
+    llmCall.duration = Date.now() - startTime;
+    
+    // Observe the failed LLM call
+    if (observability) {
+      await observability.observeOperation(llmCall);
+    }
+    
     throw error;
   }
 }
 
-async function callAnthropic(message, context = '') {
+async function callAnthropic(message, context = '', userId = 'anonymous') {
+  const startTime = Date.now();
+  const correlationId = `anthropic-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const llmCall = {
+    component: 'llmCalls',
+    provider: 'anthropic',
+    model: 'claude-3-sonnet-20240229',
+    prompt: `${context}\n\n${message}`,
+    userId: userId,
+    correlationId: correlationId,
+    success: false,
+    response: null,
+    tokensUsed: 0,
+    error: null,
+    duration: 0
+  };
+
   try {
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-3-sonnet-20240229',
@@ -302,9 +361,34 @@ async function callAnthropic(message, context = '') {
       }
     });
     
-    return response.data.content[0].text;
+    const content = response.data.content[0].text;
+    const tokensUsed = response.data.usage?.input_tokens + response.data.usage?.output_tokens || 0;
+    
+    // Update LLM call with success
+    llmCall.success = true;
+    llmCall.response = content;
+    llmCall.tokensUsed = tokensUsed;
+    llmCall.duration = Date.now() - startTime;
+    
+    // Observe the LLM call
+    if (observability) {
+      await observability.observeOperation(llmCall);
+    }
+    
+    return content;
   } catch (error) {
     console.error('Anthropic API error:', error.response?.data || error.message);
+    
+    // Update LLM call with error
+    llmCall.success = false;
+    llmCall.error = error.message;
+    llmCall.duration = Date.now() - startTime;
+    
+    // Observe the failed LLM call
+    if (observability) {
+      await observability.observeOperation(llmCall);
+    }
+    
     throw error;
   }
 }
@@ -360,8 +444,19 @@ async function callMapsAgent(messageType, payload, userId = 'anonymous') {
     toolCall.duration = Date.now() - startTime;
     
     // Observe the tool call
-    if (vertexObservability) {
-      await vertexObservability.observeToolCall(toolCall);
+    if (observability) {
+      await observability.observeOperation({
+        component: 'mapsAgent',
+        operationType: messageType,
+        toolName: messageType,
+        input: payload,
+        output: result,
+        duration: toolCall.duration,
+        success: toolCall.success,
+        error: toolCall.error,
+        userId: userId,
+        correlationId: correlationId
+      });
     }
     
     return result;
@@ -374,16 +469,43 @@ async function callMapsAgent(messageType, payload, userId = 'anonymous') {
     toolCall.duration = Date.now() - startTime;
     
     // Observe the failed tool call
-    if (vertexObservability) {
-      await vertexObservability.observeToolCall(toolCall);
+    if (observability) {
+      await observability.observeOperation({
+        component: 'mapsAgent',
+        operationType: messageType,
+        toolName: messageType,
+        input: payload,
+        output: null,
+        duration: toolCall.duration,
+        success: toolCall.success,
+        error: toolCall.error,
+        userId: userId,
+        correlationId: correlationId
+      });
     }
     
     throw error;
   }
 }
 
-// TomTom API Functions
+// TomTom API Functions with Observability
 async function searchLocationsOrbis(query, location, radius = 5000) {
+  const startTime = Date.now();
+  const correlationId = `tomtom-search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const apiCall = {
+    component: 'tomtomApi',
+    endpoint: 'search',
+    method: 'GET',
+    params: { query, location, radius },
+    correlationId: correlationId,
+    success: false,
+    response: null,
+    statusCode: null,
+    error: null,
+    duration: 0
+  };
+
   try {
     const params = {
       key: TOMTOM_API_KEY,
@@ -396,8 +518,9 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
 
     const response = await axios.get(TOMTOM_ORBIS_SEARCH_URL, { params });
     
+    let result;
     if (response.data && response.data.results) {
-      return {
+      result = {
         places: response.data.results.map(place => ({
           name: place.poi?.name || 'Unknown',
           formatted_address: place.address?.freeformAddress || 'Address not available',
@@ -407,11 +530,36 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
           categories: place.poi?.categories || []
         }))
       };
+    } else {
+      result = { places: [] };
     }
     
-    return { places: [] };
+    // Update API call with success
+    apiCall.success = true;
+    apiCall.response = result;
+    apiCall.statusCode = response.status;
+    apiCall.duration = Date.now() - startTime;
+    
+    // Observe the API call
+    if (observability) {
+      await observability.observeOperation(apiCall);
+    }
+    
+    return result;
   } catch (error) {
     console.error('TomTom Search API error:', error.response?.data || error.message);
+    
+    // Update API call with error
+    apiCall.success = false;
+    apiCall.error = error.message;
+    apiCall.statusCode = error.response?.status || 0;
+    apiCall.duration = Date.now() - startTime;
+    
+    // Observe the failed API call
+    if (observability) {
+      await observability.observeOperation(apiCall);
+    }
+    
     throw new Error('Failed to search locations');
   }
 }
@@ -519,6 +667,23 @@ async function generateStaticMapUrl(center, zoom = 12, markers = []) {
 
 // Orchestrator Handlers
 async function handleOrchestratorChat(rpcRequest, res) {
+  const startTime = Date.now();
+  const correlationId = `orchestrator-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const operation = {
+    component: 'orchestrator',
+    operationType: 'chat',
+    userId: rpcRequest.params.user_id || 'default',
+    input: rpcRequest.params,
+    correlationId: correlationId,
+    success: false,
+    output: null,
+    error: null,
+    duration: 0,
+    agentUsed: '',
+    queryType: ''
+  };
+
   try {
     const { message, user_id = 'default' } = rpcRequest.params;
     
@@ -696,6 +861,18 @@ async function handleOrchestratorChat(rpcRequest, res) {
     cleanupConversationHistory(user_id, 50); // Keep last 50 messages per user
     cleanupGlobalHistory(1000); // Keep last 1000 messages globally
     
+    // Update operation with success
+    operation.success = true;
+    operation.output = { response, agent_used, query_type };
+    operation.agentUsed = agent_used;
+    operation.queryType = query_type;
+    operation.duration = Date.now() - startTime;
+    
+    // Observe the orchestrator operation
+    if (observability) {
+      await observability.observeOperation(operation);
+    }
+    
     return res.json({
       jsonrpc: '2.0',
       id: rpcRequest.id,
@@ -710,6 +887,17 @@ async function handleOrchestratorChat(rpcRequest, res) {
     
   } catch (error) {
     console.error('Error in orchestrator chat:', error);
+    
+    // Update operation with error
+    operation.success = false;
+    operation.error = error.message;
+    operation.duration = Date.now() - startTime;
+    
+    // Observe the failed orchestrator operation
+    if (observability) {
+      await observability.observeOperation(operation);
+    }
+    
     return res.json({
       jsonrpc: '2.0',
       id: rpcRequest.id,
@@ -1108,7 +1296,7 @@ function cleanupGlobalHistory(limit) {
 }
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`🚀 Unified A2A + MCP Server running on port ${PORT}`);
   console.log(`📍 TomTom API Key: ${TOMTOM_API_KEY ? 'Configured' : 'Missing'}`);
   console.log(`🤖 LLM Providers: ${OPENAI_API_KEY ? 'OpenAI' : 'None'}, ${ANTHROPIC_API_KEY ? 'Anthropic' : 'None'}`);
@@ -1116,4 +1304,20 @@ app.listen(PORT, () => {
   console.log(`🤝 A2A Endpoint: http://localhost:${PORT}/a2a`);
   console.log(`🗺️  Maps MCP Endpoint: http://localhost:${PORT}/maps`);
   console.log(`🌐 Health Check: http://localhost:${PORT}/`);
+  
+  // Log system startup event
+  if (observability) {
+    await observability.logSystemEvent({
+      eventType: 'server_startup',
+      component: 'unified_server',
+      message: 'Unified A2A + MCP Server started successfully',
+      data: {
+        port: PORT,
+        tomtomConfigured: !!TOMTOM_API_KEY,
+        openaiConfigured: !!OPENAI_API_KEY,
+        anthropicConfigured: !!ANTHROPIC_API_KEY
+      },
+      severity: 'INFO'
+    });
+  }
 });
