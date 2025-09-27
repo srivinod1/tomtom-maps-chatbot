@@ -7,6 +7,8 @@ require('dotenv').config();
 
 // Constants for TomTom API
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const TOMTOM_ORBIS_SEARCH_URL = 'https://api.tomtom.com/maps/orbis/places/nearbySearch';
 const TOMTOM_GEOCODING_URL = 'https://api.tomtom.com/search/2/geocode';
 const TOMTOM_REVERSE_GEOCODING_URL = 'https://api.tomtom.com/search/2/reverseGeocode';
@@ -622,10 +624,75 @@ function formatMatrixResults(matrixData) {
 let conversationHistory = [];
 let userContexts = {};
 
+// LLM Integration Functions
+async function callOpenAI(message, context = '') {
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI API key not configured');
+  }
+  
+  try {
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: 'gpt-3.5-turbo',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a helpful assistant that can help with location-based queries using TomTom Maps and general questions. ${context}`
+        },
+        {
+          role: 'user',
+          content: message
+        }
+      ],
+      max_tokens: 500,
+      temperature: 0.7
+    }, {
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    return response.data.choices[0].message.content;
+  } catch (error) {
+    console.error('OpenAI API error:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+async function callAnthropic(message, context = '') {
+  if (!ANTHROPIC_API_KEY) {
+    throw new Error('Anthropic API key not configured');
+  }
+  
+  try {
+    const response = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-3-haiku-20240307',
+      max_tokens: 500,
+      messages: [
+        {
+          role: 'user',
+          content: `${context}\n\nUser: ${message}`
+        }
+      ]
+    }, {
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01'
+      }
+    });
+    
+    return response.data.content[0].text;
+  } catch (error) {
+    console.error('Anthropic API error:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
 // Orchestrator Chat Handler
 async function handleOrchestratorChat(rpcRequest, res) {
   try {
-    const { message, user_id = 'default', use_llm = false } = rpcRequest.params;
+    const { message, user_id = 'default' } = rpcRequest.params;
     
     if (!message) {
       return res.json({
@@ -696,13 +763,28 @@ async function handleOrchestratorChat(rpcRequest, res) {
       agent_used = 'general_ai_agent';
       query_type = 'general';
       
-      // Simple general responses
-      if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
-        response = 'Hello! I\'m your multi-agent assistant. I can help you with location searches, directions, geocoding, and general questions. What would you like to know?';
-      } else if (message.toLowerCase().includes('help')) {
-        response = 'I can help you with:\n- Location searches using TomTom Maps\n- Getting directions between places\n- Finding coordinates for addresses\n- General questions and conversation\n\nWhat would you like to do?';
-      } else {
-        response = `I understand you're asking: "${message}". I can help with location-based queries using TomTom Maps or answer general questions. Could you be more specific about what you need?`;
+      // Always use LLM for general questions
+      try {
+        const context = `You are a helpful assistant integrated with TomTom Maps. You can help with location searches, directions, geocoding, and general questions.`;
+        
+        // Try OpenAI first, then Anthropic, then fallback
+        if (OPENAI_API_KEY) {
+          response = await callOpenAI(message, context);
+        } else if (ANTHROPIC_API_KEY) {
+          response = await callAnthropic(message, context);
+        } else {
+          throw new Error('No LLM API keys configured');
+        }
+      } catch (error) {
+        console.error('LLM error:', error.message);
+        // Fallback to simple responses
+        if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
+          response = 'Hello! I\'m your multi-agent assistant. I can help you with location searches, directions, geocoding, and general questions. What would you like to know?';
+        } else if (message.toLowerCase().includes('help')) {
+          response = 'I can help you with:\n- Location searches using TomTom Maps\n- Getting directions between places\n- Finding coordinates for addresses\n- General questions and conversation\n\nWhat would you like to do?';
+        } else {
+          response = `I understand you're asking: "${message}". I can help with location-based queries using TomTom Maps or answer general questions. Could you be more specific about what you need?`;
+        }
       }
     }
     
@@ -721,13 +803,13 @@ async function handleOrchestratorChat(rpcRequest, res) {
     return res.json({
       jsonrpc: '2.0',
       id: rpcRequest.id,
-      result: {
-        response,
-        agent_used,
-        query_type,
-        timestamp: new Date().toISOString(),
-        success: true
-      }
+        result: {
+          response,
+          agent_used,
+          query_type,
+          timestamp: new Date().toISOString(),
+          success: true
+        }
     });
     
   } catch (error) {

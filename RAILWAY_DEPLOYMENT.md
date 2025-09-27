@@ -48,6 +48,8 @@ Ensure your repository contains:
 
    ```
    TOMTOM_API_KEY=your_actual_tomtom_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
+   ANTHROPIC_API_KEY=your_anthropic_api_key_here
    NODE_ENV=production
    ```
 
@@ -76,6 +78,8 @@ Ensure your repository contains:
 4. **Set Environment Variables**:
    ```bash
    railway variables set TOMTOM_API_KEY=your_actual_tomtom_api_key_here
+   railway variables set OPENAI_API_KEY=your_openai_api_key_here
+   railway variables set ANTHROPIC_API_KEY=your_anthropic_api_key_here
    railway variables set NODE_ENV=production
    ```
 
@@ -91,6 +95,8 @@ Ensure your repository contains:
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `TOMTOM_API_KEY` | Your TomTom API key | Yes | - |
+| `OPENAI_API_KEY` | Your OpenAI API key | No | For LLM responses |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key | No | For LLM responses |
 | `NODE_ENV` | Environment mode | No | `production` |
 | `PORT` | Server port | No | `3000` (Railway sets this) |
 
