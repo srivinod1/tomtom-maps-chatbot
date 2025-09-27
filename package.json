@@ -2,16 +2,19 @@
     "name": "tomtom-mcp-server",
     "version": "1.0.0",
     "description": "TomTom Maps integration for Model Context Protocol and Google ADK",
-    "main": "src/mcp-server.js",
+    "main": "src/orchestrator-agent.js",
     "scripts": {
-        "start": "node src/mcp-server.js",
-        "dev": "nodemon src/mcp-server.js",
+        "start": "node src/orchestrator-agent.js",
+        "dev": "nodemon src/orchestrator-agent.js",
+        "maps": "node src/maps-agent.js",
+        "maps-dev": "nodemon src/maps-agent.js",
         "test": "jest",
         "adk": "python src/tools.py"
     },
     "dependencies": {
         "axios": "^1.6.8",
         "body-parser": "^1.20.2",
+        "cors": "^2.8.5",
         "dotenv": "^16.4.5",
         "express": "^4.18.3"
     },
