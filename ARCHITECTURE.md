@@ -4,15 +4,22 @@ This document provides a comprehensive overview of the multi-agent system archit
 
 ## 🏗️ System Overview
 
-The Multi-Agent TomTom Maps MCP Server is a standardized Model Context Protocol (MCP) server that provides location-based services through specialized agents. It combines TomTom Maps API with general knowledge capabilities in a unified interface.
+The Multi-Agent TomTom Maps Server implements a hybrid architecture combining:
+
+- **A2A (Agent-to-Agent) Protocol**: For inter-agent communication
+- **MCP (Model Context Protocol)**: For internal TomTom API access within Maps Agent
+- **JSON-RPC**: For frontend to Orchestrator communication
+
+This provides location-based services through specialized agents with clean separation of concerns.
 
 ## 🎯 Design Principles
 
-1. **MCP-First**: All functionality exposed through standardized MCP methods
-2. **Agent Specialization**: Each agent handles specific types of queries
-3. **Single Interface**: One MCP server handles all interactions
-4. **Railway Ready**: Designed for easy deployment on Railway
-5. **Frontend Agnostic**: Works with any frontend that supports HTTP/JSON-RPC
+1. **A2A Protocol**: Standardized agent-to-agent communication
+2. **MCP Integration**: Internal TomTom API access via MCP within Maps Agent
+3. **Agent Specialization**: Each agent handles specific types of queries
+4. **Single Frontend Interface**: One JSON-RPC endpoint for frontend
+5. **Railway Ready**: Designed for easy deployment on Railway
+6. **Frontend Agnostic**: Works with any frontend that supports HTTP/JSON-RPC
 
 ## 🏛️ Architecture Diagram
 
@@ -25,33 +32,34 @@ The Multi-Agent TomTom Maps MCP Server is a standardized Model Context Protocol 
                       │ HTTP/JSON-RPC
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
-│              Multi-Agent MCP Server                            │
+│              Orchestrator Agent                                │
 │              (Port 3000)                                       │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                MCP Router                               │   │
-│  │  • agent.chat                                          │   │
-│  │  • agent.capabilities                                  │   │
-│  │  • agent.context                                       │   │
-│  │  • maps.search                                         │   │
-│  │  • maps.geocode                                        │   │
-│  │  • maps.directions                                     │   │
-│  │  • maps.staticMap                                      │   │
-│  │  • maps.matrix                                         │   │
+│  │                JSON-RPC Router                          │   │
+│  │  • orchestrator.chat                                   │   │
+│  │  • orchestrator.capabilities                           │   │
+│  │  • orchestrator.context                                │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
-        ┌─────────────┼─────────────┐
-        │             │             │
-┌───────▼──────┐ ┌───▼────┐ ┌──────▼──────┐
-│  Maps Agent  │ │General │ │   Context   │
-│  (TomTom)    │ │   AI   │ │   Manager   │
-│              │ │ Agent  │ │             │
-└───────┬──────┘ └────────┘ └─────────────┘
-        │
-┌───────▼──────┐
-│ TomTom Maps  │
-│     API      │
-└──────────────┘
+                      │ A2A Protocol
+                      │
+┌─────────────────────▼───────────────────────────────────────────┐
+│                Maps Agent                                       │
+│                (Port 3002)                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                A2A + MCP Router                         │   │
+│  │  A2A: search_places, geocode_address, etc.             │   │
+│  │  MCP: maps.search, maps.geocode, etc.                  │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      │ MCP Protocol
+                      │
+┌─────────────────────▼───────────────────────────────────────────┐
+│                TomTom Maps API                                  │
+│                (External)                                       │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## 🤖 Agent Architecture

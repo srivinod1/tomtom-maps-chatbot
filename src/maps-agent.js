@@ -8,11 +8,12 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const A2AProtocol = require('./a2a-protocol');
 require('dotenv').config();
 
 // Constants for TomTom API
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
-const TOMTOM_ORBIS_SEARCH_URL = 'https://api.tomtom.com/maps/orbis/places/nearbySearch';
+const TOMTOM_ORBIS_SEARCH_URL = 'https://api.tomtom.com/maps/orbis/places/nearbySearch/.json';
 const TOMTOM_GEOCODING_URL = 'https://api.tomtom.com/search/2/geocode';
 const TOMTOM_REVERSE_GEOCODING_URL = 'https://api.tomtom.com/search/2/reverseGeocode';
 const TOMTOM_STATICMAP_URL = 'https://api.tomtom.com/map/1/staticimage';
@@ -26,6 +27,9 @@ if (!TOMTOM_API_KEY) {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Initialize A2A Protocol
+const a2a = new A2AProtocol('maps-agent', 'maps', `http://localhost:${PORT}`);
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -33,10 +37,13 @@ app.use(bodyParser.json());
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
-    service: 'Maps Agent - TomTom MCP Server',
+    service: 'Maps Agent - TomTom MCP + A2A Server',
     status: 'healthy',
-    version: '1.0.0',
+    version: '2.0.0',
     timestamp: new Date().toISOString(),
+    protocols: ['MCP', 'A2A'],
+    agentId: 'maps-agent',
+    agentType: 'maps',
     capabilities: [
       'place_search',
       'geocoding',
@@ -45,6 +52,57 @@ app.get('/', (req, res) => {
       'static_maps',
       'matrix_routing'
     ]
+  });
+});
+
+// MCP Protocol endpoints (for internal TomTom API access)
+app.post('/', async (req, res) => {
+  console.log('Received MCP request:', JSON.stringify(req.body, null, 2));
+  const { method, params, id } = req.body;
+  
+  try {
+    switch (method) {
+      case 'initialize':
+        return await handleInitialize({ params, id }, res);
+        
+      case 'tools/list':
+        return await handleToolsList({ params, id }, res);
+        
+      case 'tools/call':
+        return await handleToolsCall({ params, id }, res);
+        
+      default:
+        return res.json({
+          jsonrpc: '2.0',
+          id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${method}`
+          }
+        });
+    }
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+    return res.json({
+      jsonrpc: '2.0',
+      id,
+      error: {
+        code: -32603,
+        message: 'Internal error'
+      }
+    });
+  }
+});
+
+// A2A Protocol endpoint (for inter-agent communication)
+app.post('/a2a', (req, res) => {
+  a2a.handleA2AMessage(req, res);
+});
+
+// Agent discovery endpoint
+app.get('/agents', (req, res) => {
+  res.json({
+    agents: [a2a.getAgentStatus()]
   });
 });
 
@@ -438,10 +496,103 @@ app.post('/', async (req, res) => {
   }
 });
 
+// Implement A2A message processing for Maps Agent
+a2a.processA2AMessage = async function(a2aMessage) {
+  const { type, payload } = a2aMessage.message;
+  
+  try {
+    switch (type) {
+      case 'search_places':
+        // Use MCP internally to call TomTom API
+        return await callMCPTool('maps.search', {
+          query: payload.query,
+          location: payload.location,
+          radius: payload.radius
+        });
+        
+      case 'geocode_address':
+        return await callMCPTool('maps.geocode', {
+          address: payload.address
+        });
+        
+      case 'reverse_geocode':
+        return await callMCPTool('maps.reverse_geocode', {
+          lat: payload.lat,
+          lon: payload.lon
+        });
+        
+      case 'calculate_route':
+        return await callMCPTool('maps.directions', {
+          origin: payload.origin,
+          destination: payload.destination
+        });
+        
+      case 'generate_static_map':
+        return await callMCPTool('maps.static_map', {
+          center: payload.center,
+          zoom: payload.zoom,
+          markers: payload.markers
+        });
+        
+      case 'get_capabilities':
+        return {
+          agentId: 'maps-agent',
+          agentType: 'maps',
+          capabilities: [
+            'place_search',
+            'geocoding',
+            'reverse_geocoding',
+            'directions',
+            'static_maps',
+            'matrix_routing'
+          ]
+        };
+        
+      default:
+        throw new Error(`Unknown A2A message type: ${type}`);
+    }
+  } catch (error) {
+    console.error(`❌ A2A Processing Error (${type}):`, error.message);
+    throw error;
+  }
+};
+
+// Internal MCP tool call function
+async function callMCPTool(toolName, args) {
+  try {
+    // Simulate MCP tool call internally
+    switch (toolName) {
+      case 'maps.search':
+        return await searchLocationsOrbis(args.query, args.location, args.radius);
+        
+      case 'maps.geocode':
+        return await geocodeAddress(args.address);
+        
+      case 'maps.reverse_geocode':
+        return await reverseGeocode(args.lat, args.lon);
+        
+      case 'maps.directions':
+        return await calculateRoute(args.origin, args.destination);
+        
+      case 'maps.static_map':
+        return { url: await generateStaticMapUrl(args.center, args.zoom, args.markers) };
+        
+      default:
+        throw new Error(`Unknown MCP tool: ${toolName}`);
+    }
+  } catch (error) {
+    console.error(`❌ MCP Tool Error (${toolName}):`, error.message);
+    throw error;
+  }
+}
+
 // Start server
 const actualPort = process.env.MAPS_AGENT_PORT || PORT;
 app.listen(actualPort, () => {
-  console.log(`🗺️  Maps Agent running on port ${actualPort}`);
+  console.log(`🗺️  Maps Agent (MCP + A2A) running on port ${actualPort}`);
   console.log(`📍 TomTom API Key: ${TOMTOM_API_KEY ? 'Configured' : 'Missing'}`);
-  console.log(`🔧 Available tools: search, geocode, reverse_geocode, directions, static_map`);
+  console.log(`🔧 MCP Tools: maps.search, maps.geocode, maps.reverse_geocode, maps.directions, maps.static_map`);
+  console.log(`📡 A2A Capabilities: search_places, geocode_address, reverse_geocode, calculate_route, generate_static_map`);
+  console.log(`🌐 MCP Endpoint: http://localhost:${actualPort}/`);
+  console.log(`🤝 A2A Endpoint: http://localhost:${actualPort}/a2a`);
 });

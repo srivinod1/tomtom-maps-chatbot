@@ -8,6 +8,7 @@ const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const A2AProtocol = require('./a2a-protocol');
 require('dotenv').config();
 
 // Constants for LLM APIs
@@ -15,28 +16,47 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Maps Agent configuration
-const MAPS_AGENT_URL = process.env.MAPS_AGENT_URL || 'http://localhost:3001';
+const MAPS_AGENT_URL = process.env.MAPS_AGENT_URL || 'http://localhost:3002';
 
 // Create orchestrator server
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// Initialize A2A Protocol
+const a2a = new A2AProtocol('orchestrator-agent', 'orchestrator', `http://localhost:${process.env.PORT || 3000}`);
+
 // Health check endpoint
 app.get('/', (req, res) => {
   res.json({
-    service: 'Orchestrator Agent - Multi-Agent Coordination',
+    service: 'Orchestrator Agent - A2A Coordination',
     status: 'healthy',
     version: '2.0.0',
     timestamp: new Date().toISOString(),
+    protocol: 'A2A',
+    agentId: 'orchestrator-agent',
+    agentType: 'orchestrator',
     endpoints: {
       orchestrator: 'POST / (JSON-RPC)',
+      a2a: 'POST /a2a (A2A Protocol)',
       health: 'GET /'
     },
     agents: {
       maps_agent: MAPS_AGENT_URL,
       general_ai: 'integrated'
     }
+  });
+});
+
+// A2A Protocol endpoint
+app.post('/a2a', (req, res) => {
+  a2a.handleA2AMessage(req, res);
+});
+
+// Agent discovery endpoint
+app.get('/agents', (req, res) => {
+  res.json({
+    agents: [a2a.getAgentStatus()]
   });
 });
 
@@ -180,29 +200,25 @@ async function callAnthropic(message, context = '') {
   }
 }
 
-// Maps Agent Communication
-async function callMapsAgent(toolName, args) {
+// Maps Agent Communication via A2A
+async function callMapsAgent(messageType, payload) {
   try {
-    const response = await axios.post(MAPS_AGENT_URL, {
-      jsonrpc: '2.0',
-      id: Date.now(),
-      method: 'tools/call',
-      params: {
-        name: toolName,
-        arguments: args
-      }
-    }, {
-      headers: { 'Content-Type': 'application/json' },
+    // Register Maps Agent if not already registered
+    if (!a2a.registeredAgents.has('maps-agent')) {
+      a2a.registerAgent('maps-agent', 'maps', MAPS_AGENT_URL);
+    }
+    
+    const result = await a2a.sendMessage('maps-agent', messageType, payload, {
       timeout: 10000
     });
     
-    if (response.data.error) {
-      throw new Error(response.data.error.message);
+    if (!result.success) {
+      throw new Error(result.error);
     }
     
-    return JSON.parse(response.data.result.content[0].text);
+    return result.data;
   } catch (error) {
-    console.error('Maps Agent error:', error.message);
+    console.error('A2A Maps Agent error:', error.message);
     throw error;
   }
 }
@@ -284,7 +300,7 @@ async function handleOrchestratorChat(rpcRequest, res) {
           } else if (extractedLocation && extractedLocation.source === 'address') {
             // Geocode the address first
             try {
-              const geocodeResult = await callMapsAgent('maps.geocode', { address: extractedLocation.address });
+              const geocodeResult = await callMapsAgent('geocode_address', { address: extractedLocation.address });
               
               if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
                 const coords = geocodeResult.results[0].position;
@@ -297,9 +313,9 @@ async function handleOrchestratorChat(rpcRequest, res) {
             }
           }
           
-          // Call Maps Agent for search
-          console.log(`Searching for "${searchQuery}" at location:`, searchLocation);
-          const searchResult = await callMapsAgent('maps.search', {
+          // Call Maps Agent for search via A2A
+          console.log(`A2A Search for "${searchQuery}" at location:`, searchLocation);
+          const searchResult = await callMapsAgent('search_places', {
             query: searchQuery,
             location: searchLocation
           });
@@ -515,11 +531,96 @@ app.post('/', async (req, res) => {
   }
 });
 
+// Implement A2A message processing for Orchestrator Agent
+a2a.processA2AMessage = async function(a2aMessage) {
+  const { type, payload } = a2aMessage.message;
+  
+  try {
+    switch (type) {
+      case 'chat_message':
+        // Process chat message and route to appropriate agent
+        const userContext = getUserContext(payload.user_id || 'default');
+        const conversationContext = getConversationContext(payload.user_id || 'default');
+        
+        // Store user message
+        userContext.conversationHistory.push({
+          timestamp: new Date().toISOString(),
+          type: 'user',
+          message: payload.message
+        });
+        
+        // Route to appropriate agent
+        const locationKeywords = ['where', 'location', 'address', 'place', 'find', 'search', 'near', 'nearby', 'directions', 'route', 'coordinates', 'geocode', 'restaurant', 'restaurants', 'closest'];
+        const isLocationQuery = locationKeywords.some(keyword => payload.message.toLowerCase().includes(keyword));
+        
+        if (isLocationQuery) {
+          // Route to Maps Agent via A2A
+          const searchQuery = payload.message.replace(/find|search|near|me|restaurant|restaurants|closest|to this place|along with distances/gi, '').trim() || 'restaurants';
+          const searchLocation = { lat: 47.6062, lon: -122.3321 }; // Default location
+          
+          const searchResult = await callMapsAgent('search_places', {
+            query: searchQuery,
+            location: searchLocation
+          });
+          
+          return {
+            response: `Found ${searchResult.places?.length || 0} places for "${searchQuery}"`,
+            agent_used: 'maps_agent',
+            query_type: 'location'
+          };
+        } else {
+          // Route to LLM
+          let contextMessage = `You are a helpful assistant integrated with TomTom Maps.`;
+          if (conversationContext.length > 0) {
+            contextMessage += `\n\nRecent conversation:\n`;
+            conversationContext.forEach(msg => {
+              contextMessage += `${msg.type}: ${msg.message}\n`;
+            });
+          }
+          
+          let llmResponse = '';
+          if (OPENAI_API_KEY) {
+            llmResponse = await callOpenAI(payload.message, contextMessage);
+          } else if (ANTHROPIC_API_KEY) {
+            llmResponse = await callAnthropic(payload.message, contextMessage);
+          } else {
+            llmResponse = `I understand you're asking: "${payload.message}". I can help with location-based queries using TomTom Maps or answer general questions.`;
+          }
+          
+          return {
+            response: llmResponse,
+            agent_used: 'general_ai_agent',
+            query_type: 'general'
+          };
+        }
+        
+      case 'get_capabilities':
+        return {
+          agentId: 'orchestrator-agent',
+          agentType: 'orchestrator',
+          capabilities: [
+            'chat_message',
+            'agent_coordination',
+            'context_management',
+            'query_routing'
+          ]
+        };
+        
+      default:
+        throw new Error(`Unknown A2A message type: ${type}`);
+    }
+  } catch (error) {
+    console.error(`❌ A2A Processing Error (${type}):`, error.message);
+    throw error;
+  }
+};
+
 // Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🎯 Orchestrator Agent running on port ${PORT}`);
+  console.log(`🎯 Orchestrator Agent (A2A) running on port ${PORT}`);
   console.log(`🗺️  Maps Agent URL: ${MAPS_AGENT_URL}`);
   console.log(`🤖 LLM Providers: ${OPENAI_API_KEY ? 'OpenAI' : 'None'}, ${ANTHROPIC_API_KEY ? 'Anthropic' : 'None'}`);
-  console.log(`🔧 Available methods: orchestrator.chat, orchestrator.capabilities, orchestrator.context`);
+  console.log(`🔧 A2A Capabilities: chat_message, get_capabilities`);
+  console.log(`📡 A2A Endpoint: http://localhost:${PORT}/a2a`);
 });
