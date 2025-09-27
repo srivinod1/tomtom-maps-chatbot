@@ -654,12 +654,13 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
 
 async function geocodeAddress(address) {
   try {
-    const params = {
-      key: TOMTOM_API_KEY,
-      query: address
-    };
-
-    const response = await axios.get(TOMTOM_GEOCODING_URL, { params });
+    // URL encode the address properly
+    const encodedAddress = encodeURIComponent(address);
+    const url = `${TOMTOM_GEOCODING_URL}/${encodedAddress}.json?key=${TOMTOM_API_KEY}&limit=1`;
+    
+    console.log('Geocoding URL:', url);
+    
+    const response = await axios.get(url);
     
     if (response.data && response.data.results) {
       return {
