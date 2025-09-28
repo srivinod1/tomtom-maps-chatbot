@@ -18,10 +18,29 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Debug environment variables
-console.log('Environment variables check:');
-console.log('OPENAI_API_KEY:', OPENAI_API_KEY ? `${OPENAI_API_KEY.substring(0, 10)}...` : 'NOT SET');
-console.log('ANTHROPIC_API_KEY:', ANTHROPIC_API_KEY ? `${ANTHROPIC_API_KEY.substring(0, 10)}...` : 'NOT SET');
-console.log('TOMTOM_API_KEY:', TOMTOM_API_KEY ? `${TOMTOM_API_KEY.substring(0, 10)}...` : 'NOT SET');
+console.log('=== ENVIRONMENT VARIABLES DEBUG ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('All env vars starting with OPENAI:', Object.keys(process.env).filter(key => key.includes('OPENAI')));
+console.log('All env vars starting with TOMTOM:', Object.keys(process.env).filter(key => key.includes('TOMTOM')));
+console.log('All env vars starting with ANTHROPIC:', Object.keys(process.env).filter(key => key.includes('ANTHROPIC')));
+
+console.log('OPENAI_API_KEY exists:', !!OPENAI_API_KEY);
+console.log('OPENAI_API_KEY length:', OPENAI_API_KEY ? OPENAI_API_KEY.length : 0);
+console.log('OPENAI_API_KEY starts with sk-:', OPENAI_API_KEY ? OPENAI_API_KEY.startsWith('sk-') : false);
+console.log('OPENAI_API_KEY first 20 chars:', OPENAI_API_KEY ? OPENAI_API_KEY.substring(0, 20) : 'NOT SET');
+
+console.log('ANTHROPIC_API_KEY exists:', !!ANTHROPIC_API_KEY);
+console.log('ANTHROPIC_API_KEY length:', ANTHROPIC_API_KEY ? ANTHROPIC_API_KEY.length : 0);
+
+console.log('TOMTOM_API_KEY exists:', !!TOMTOM_API_KEY);
+console.log('TOMTOM_API_KEY length:', TOMTOM_API_KEY ? TOMTOM_API_KEY.length : 0);
+console.log('TOMTOM_API_KEY first 10 chars:', TOMTOM_API_KEY ? TOMTOM_API_KEY.substring(0, 10) : 'NOT SET');
+
+// Check if we're getting placeholder values
+const hasPlaceholderValues = OPENAI_API_KEY && OPENAI_API_KEY.includes('your_ope');
+console.log('Has placeholder values:', hasPlaceholderValues);
+
+console.log('=== END ENVIRONMENT VARIABLES DEBUG ===');
 
 // Constants for TomTom API
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
@@ -304,12 +323,20 @@ Respond with a JSON object in this exact format:
 }`;
 
   try {
+    console.log('=== LLM CONTEXT EXTRACTION DEBUG ===');
+    console.log('OPENAI_API_KEY available:', !!OPENAI_API_KEY);
+    console.log('ANTHROPIC_API_KEY available:', !!ANTHROPIC_API_KEY);
+    console.log('Will use LLM:', !!(OPENAI_API_KEY || ANTHROPIC_API_KEY));
+    
     let llmResponse = '';
     if (OPENAI_API_KEY) {
+      console.log('Using OpenAI for context extraction');
       llmResponse = await callOpenAI(contextPrompt, '', userContext.userId || 'default');
     } else if (ANTHROPIC_API_KEY) {
+      console.log('Using Anthropic for context extraction');
       llmResponse = await callAnthropic(contextPrompt, '', userContext.userId || 'default');
     } else {
+      console.log('No LLM API keys available, using fallback pattern matching');
       // Fallback to simple pattern matching if no LLM available
       return fallbackContextExtraction(message, userContext);
     }
@@ -483,6 +510,11 @@ async function callOpenAI(message, context = '', userId = 'anonymous') {
   };
 
   try {
+    console.log('=== OPENAI API CALL DEBUG ===');
+    console.log('API Key being used:', OPENAI_API_KEY ? `${OPENAI_API_KEY.substring(0, 20)}...` : 'NOT SET');
+    console.log('API Key length:', OPENAI_API_KEY ? OPENAI_API_KEY.length : 0);
+    console.log('API Key starts with sk-:', OPENAI_API_KEY ? OPENAI_API_KEY.startsWith('sk-') : false);
+    
     const response = await axios.post('https://api.openai.com/v1/chat/completions', {
       model: 'gpt-3.5-turbo',
       messages: [
