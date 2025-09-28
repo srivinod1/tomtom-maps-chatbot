@@ -2030,22 +2030,12 @@ async function executeSingleTool(intent, location_context, search_query, user_co
           case 'search_places':
           case 'search':
             try {
-              // Try MCP tool first, fallback to direct API call
+              // Use direct API call instead of MCP tool for better reliability
               let searchResult;
-              try {
-                searchResult = await mcpClient.callTool('mcp://tomtom/search', {
-                  query: search_query || 'places',
-                  lat: searchLocation.lat,
-                  lon: searchLocation.lon,
-                  radius: 5000,
-                  limit: 10
-                });
-              } catch (mcpError) {
-                console.log('MCP tool not available, using direct API call');
-                // Determine geobias for search
-                const searchGeobias = await determineGeobiasWithLLM(search_query || 'places', user_context);
-                searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation, 5000, searchGeobias);
-              }
+              console.log('Using direct API call for place search');
+              // Determine geobias for search
+              const searchGeobias = await determineGeobiasWithLLM(search_query || 'places', user_context);
+              searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation, 5000, searchGeobias);
               
               if (searchResult && searchResult.places && searchResult.places.length > 0) {
                 response = `I found ${searchResult.places.length} places for "${search_query || 'places'}":\n\n`;
