@@ -1,307 +1,196 @@
-# Multi-Agent TomTom Maps MCP Server
+# TomTom MCP Multi-Agent System
 
-A multi-agent system that combines TomTom Maps API with general knowledge through a standardized MCP (Model Context Protocol) interface. Built with Google ADK for agent coordination.
-
-## 🚀 Features
-
-- **🤖 Multi-Agent Architecture**: Specialized agents for different query types
-- **🗺️ Location Search**: Find restaurants, hotels, gas stations, and more
-- **🚗 Directions**: Get turn-by-turn directions between locations
-- **📍 Geocoding**: Convert addresses to coordinates and vice versa
-- **🗺️ Static Maps**: Generate map images for locations
-- **📊 Matrix Routing**: Calculate distance/time matrices
-- **💬 MCP Chat Interface**: Natural language conversation through MCP
-- **🧠 Context Management**: User preferences and conversation history
-- **☁️ Railway Ready**: One-click deployment to Railway
+A sophisticated multi-agent system that integrates Google ADK (Agent Development Kit), TomTom Maps APIs, and Model Context Protocol (MCP) to provide intelligent location-based services.
 
 ## 🏗️ Architecture
 
-```
-Frontend (Your App)
-       ↓
-Multi-Agent MCP Server (src/mcp-server.js)
-       ↓
-┌─────────────────┬─────────────────┬─────────────────┐
-│   Maps Agent    │  General AI     │  Context        │
-│   (TomTom)      │    Agent        │  Manager        │
-└─────────────────┴─────────────────┴─────────────────┘
-       ↓
-TomTom Maps API
-```
+This project implements a clean, scalable multi-agent architecture with:
 
-## 📋 Prerequisites
-
-- Python 3.9+
-- Node.js 16+
-- TomTom API Key ([Get one here](https://developer.tomtom.com/))
-- Railway account ([Sign up here](https://railway.app))
+- **Unified Server**: Single Railway deployment with multiple agent capabilities
+- **A2A Protocol**: Standardized Agent-to-Agent communication
+- **MCP Integration**: TomTom APIs accessed through Model Context Protocol
+- **Enhanced Multi-Agent System**: Planner, Researcher, Writer, Reviewer, Supervisor agents
+- **Comprehensive Observability**: Google Cloud Logging, Monitoring, and Trace
 
 ## 🚀 Quick Start
 
-### 1. Clone and Setup
+### Prerequisites
 
-```bash
-git clone https://github.com/YOUR_USERNAME/tomtom-maps-chatbot.git
-cd tomtom-maps-chatbot
-```
+- Node.js 18+
+- Python 3.9+
+- TomTom API key
+- OpenAI/Anthropic API keys (optional)
+- Google Cloud Project (for observability)
 
-### 2. Install Dependencies
+### Installation
 
-```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install Node.js dependencies
-npm install
-```
-
-### 3. Configure Environment
-
-```bash
-# Copy environment template
-cp env.example .env
-
-# Edit .env and add your TomTom API key
-echo "TOMTOM_API_KEY=your_api_key_here" >> .env
-```
-
-### 4. Start Services
-
-```bash
-# Start TomTom MCP server (Terminal 1)
-npm start
-
-# Start Flask API server (Terminal 2)
-python app.py
-```
-
-### 5. Test the API
-
-```bash
-# Run the test suite
-python test_api.py
-```
-
-## 🌐 API Endpoints
-
-### Health Check
-```http
-GET /
-```
-
-### Chat with Bot
-```http
-POST /api/chat
-Content-Type: application/json
-
-{
-  "message": "Find restaurants near 47.6062, -122.3321",
-  "user_id": "user123"
-}
-```
-
-### Get Chat History
-```http
-GET /api/chat/history?user_id=user123&limit=10
-```
-
-### Set User Context
-```http
-POST /api/context
-Content-Type: application/json
-
-{
-  "user_id": "user123",
-  "context": {
-    "current_location": {"lat": 47.6062, "lon": -122.3321}
-  }
-}
-```
-
-### Get Capabilities
-```http
-GET /api/capabilities
-```
-
-## 💬 Example Queries
-
-The chatbot can handle various types of location queries:
-
-- **Search**: "Find coffee shops near me"
-- **Directions**: "How do I get from Seattle to Portland?"
-- **Geocoding**: "What are the coordinates for 123 Main Street?"
-- **Reverse Geocoding**: "What's at 47.6062, -122.3321?"
-- **General**: "Hello! What can you do?"
-
-## 🚂 Railway Deployment
-
-### Deploy Multi-Agent MCP Server
-
-1. **Push to GitHub**:
+1. **Clone the repository**
    ```bash
-   git add .
-   git commit -m "Multi-agent MCP server"
-   git push origin main
+   git clone <repository-url>
+   cd ADK-Agent
    ```
 
-2. Go to [Railway](https://railway.app)
-3. Click "New Project" → "Deploy from GitHub repo"
-4. Select your repository
-5. Railway will automatically detect it's a Node.js app
-6. Add environment variables in Railway dashboard:
-   - `TOMTOM_API_KEY`: Your TomTom API key
+2. **Install dependencies**
+   ```bash
+   npm install
+   pip install -r requirements.txt
+   ```
 
-The MCP server will be available at your Railway URL for frontend integration.
+3. **Set up environment variables**
+   ```bash
+   cp env.example .env
+   # Edit .env with your API keys
+   ```
 
-See [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) for detailed instructions.
+4. **Start the services**
+   ```bash
+   # Terminal 1: Start MCP Tool Server
+   npm run mcp-tools
+   
+   # Terminal 2: Start Unified Server
+   npm start
+   
+   # Terminal 3: Start Enhanced Orchestrator (optional)
+   npm run enhanced
+   ```
 
-## 🧪 Testing
+### Testing
 
-### Run All Tests
 ```bash
-# Test Multi-Agent MCP server
-python test_mcp_multi_agent.py
+# Test the complete system
+npm run test-adk
 
-# Test TomTom MCP server
-python test_all_endpoints.py
+# Test enhanced multi-agent system
+npm run test-enhanced
 ```
 
-### Manual Testing
-```bash
-# Start the MCP server
-npm start
+## 📡 API Endpoints
 
-# Test agent capabilities
-curl -X POST http://localhost:3000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.capabilities"}'
+### Unified Server (Port 3000)
+- `POST /` - JSON-RPC endpoint for chat
+- `GET /health` - Health check
+- `GET /analytics` - System analytics
+- `POST /a2a` - A2A protocol endpoint
 
-# Test agent chat
-curl -X POST http://localhost:3000 \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.chat", "params": {"message": "Find coffee shops near me", "user_id": "test_user"}}'
-```
+### MCP Tool Server (Port 3003)
+- `GET /manifest` - Tool manifest
+- `GET /tools` - Available tools
+- `POST /tools/:toolName` - Execute tool
+- `GET /health` - Health check
 
-## 🔧 Frontend Integration
+## 🤖 Agents
 
-### JavaScript Example
-```javascript
-async function sendMessage(message, userId = 'default') {
-  const response = await fetch('https://your-mcp-server.railway.app', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'agent.chat',
-      params: { message, user_id: userId }
-    })
-  });
-  
-  const data = await response.json();
-  return data.result.response;
-}
+### Orchestrator Agent
+- Central coordination and request routing
+- LLM integration for intent understanding
+- Conversation history and context management
 
-// Usage
-sendMessage('Find coffee shops near me')
-  .then(response => console.log(response));
-```
+### Enhanced Multi-Agent System
+- **Planner Agent**: Decomposes requests into steps
+- **Researcher Agent**: Gathers evidence via MCP tools
+- **Writer Agent**: Synthesizes user-facing responses
+- **Reviewer Agent**: Quality control and validation
+- **Supervisor Agent**: Budget enforcement and risk management
 
-### React Example
-```jsx
-import React, { useState } from 'react';
+### Maps Agent
+- Location-based query processing
+- TomTom API integration via MCP
+- Geocoding, search, routing, static maps
 
-function Chatbot() {
-  const [message, setMessage] = useState('');
-  const [response, setResponse] = useState('');
+## 🛠️ MCP Tools
 
-  const sendMessage = async () => {
-    const result = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, user_id: 'user123' })
-    });
-    
-    const data = await result.json();
-    setResponse(data.response);
-  };
+Available TomTom MCP tools:
+- `mcp://tomtom/search` - Place search
+- `mcp://tomtom/geocode` - Address geocoding
+- `mcp://tomtom/reverse-geocode` - Coordinate lookup
+- `mcp://tomtom/directions` - Route calculation
+- `mcp://tomtom/static-map` - Map image generation
 
-  return (
-    <div>
-      <input value={message} onChange={(e) => setMessage(e.target.value)} />
-      <button onClick={sendMessage}>Send</button>
-      {response && <div>{response}</div>}
-    </div>
-  );
-}
-```
+## 📊 Observability
+
+The system includes comprehensive observability with:
+- Google Cloud Logging for detailed logs
+- Google Cloud Monitoring for metrics
+- Google Cloud Trace for request tracing
+- Analytics endpoint for system insights
+
+## 🚀 Deployment
+
+### Railway Deployment
+
+1. **Set up Railway project**
+   ```bash
+   railway login
+   railway init
+   ```
+
+2. **Configure environment variables**
+   - `TOMTOM_API_KEY`
+   - `OPENAI_API_KEY` (optional)
+   - `ANTHROPIC_API_KEY` (optional)
+   - `GEMINI_API_KEY` (optional)
+   - `GOOGLE_CLOUD_PROJECT`
+   - `GOOGLE_APPLICATION_CREDENTIALS`
+
+3. **Deploy**
+   ```bash
+   railway up
+   ```
+
+### Environment Variables
+
+See `env.example` for all required environment variables.
 
 ## 📁 Project Structure
 
 ```
-tomtom-maps-chatbot/
-├── app.py                    # Flask API server
-├── chatbot_agent.py          # Chatbot agent logic
+ADK-Agent/
 ├── src/
-│   ├── mcp-server.js         # TomTom MCP server
-│   ├── tomtom-maps/
-│   │   └── index.js          # TomTom API integration
-│   └── tools.py              # ADK tools
-├── examples/                 # Example scripts
-├── scripts/                  # Utility scripts
-├── docs/                     # Documentation
-├── railway.json              # Railway deployment config
-├── requirements.txt          # Python dependencies
-├── package.json              # Node.js dependencies
-└── test_*.py                 # Test suites
+│   ├── unified-server.js              # Main unified server
+│   ├── enhanced-orchestrator.js       # Enhanced multi-agent orchestrator
+│   ├── mcp-tool-server.js            # MCP tool server
+│   ├── mcp-client.js                 # MCP client library
+│   ├── a2a-protocol.js               # A2A protocol implementation
+│   ├── comprehensive-observability.js # Observability system
+│   └── enhanced-agents/              # Enhanced agent implementations
+├── test_adk_a2a_mcp.py               # Main test script
+├── test_enhanced_architecture.py     # Enhanced architecture tests
+├── railway.json                      # Railway deployment config
+├── package.json                      # Node.js dependencies
+├── requirements.txt                  # Python dependencies
+└── ARCHITECTURE.md                   # Detailed architecture documentation
 ```
 
-## 🔑 Environment Variables
+## 🔧 Development
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `TOMTOM_API_KEY` | Your TomTom API key | Yes | - |
-| `MCP_SERVER_URL` | TomTom MCP server URL | No | `http://localhost:3000` |
-| `FLASK_ENV` | Flask environment | No | `production` |
-| `PORT` | Flask port | No | `5000` (Railway sets this) |
+### Scripts
 
-## 🐛 Troubleshooting
+- `npm start` - Start unified server
+- `npm run dev` - Start with nodemon
+- `npm run enhanced` - Start enhanced orchestrator
+- `npm run mcp-tools` - Start MCP tool server
+- `npm run test-adk` - Run main tests
+- `npm run test-enhanced` - Run enhanced tests
 
-### Common Issues
+### Adding New Agents
 
-1. **MCP Server Not Running**
-   ```bash
-   # Check if server is running
-   curl http://localhost:3000/
-   
-   # Start the server
-   npm start
-   ```
+1. Create agent file in `src/enhanced-agents/`
+2. Implement A2A protocol methods
+3. Register agent in orchestrator
+4. Add tests
 
-2. **API Key Issues**
-   - Verify your TomTom API key is correct
-   - Check if the key has the required permissions
-   - Ensure the key is set in environment variables
+### Adding New MCP Tools
 
-3. **Port Conflicts**
-   ```bash
-   # Use different port
-   PORT=5001 python app.py
-   ```
-
-4. **Dependencies Issues**
-   ```bash
-   # Reinstall dependencies
-   pip install -r requirements.txt
-   npm install
-   ```
+1. Define tool in `src/mcp-tool-server.js`
+2. Implement tool execution logic
+3. Update MCP client if needed
+4. Add tests
 
 ## 📚 Documentation
 
-- [Railway Deployment Guide](RAILWAY_DEPLOYMENT.md)
-- [GitHub Setup Instructions](GITHUB_SETUP.md)
-- [TomTom API Documentation](https://developer.tomtom.com/)
-- [Flask Documentation](https://flask.palletsprojects.com/)
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed architecture documentation
+- [RAILWAY_DEPLOYMENT.md](RAILWAY_DEPLOYMENT.md) - Deployment guide
+- [POSTMAN_TESTS.md](POSTMAN_TESTS.md) - API testing guide
 
 ## 🤝 Contributing
 
@@ -313,17 +202,15 @@ tomtom-maps-chatbot/
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License.
 
-## 🙏 Acknowledgments
+## 🆘 Support
 
-- [TomTom](https://www.tomtom.com/) for the Maps API
-- [Railway](https://railway.app/) for the deployment platform
-- [Flask](https://flask.palletsprojects.com/) for the web framework
+For issues and questions:
+1. Check the [ARCHITECTURE.md](ARCHITECTURE.md) documentation
+2. Review existing issues
+3. Create a new issue with detailed information
 
-## 📞 Support
+---
 
-- Create an issue on GitHub
-- Check the troubleshooting section
-- Review the documentation
-- Test with the provided test suites
+Built with ❤️ using Google ADK, TomTom Maps, and Model Context Protocol.

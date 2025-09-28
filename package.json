@@ -6,13 +6,13 @@
   "scripts": {
     "start": "node src/unified-server.js",
     "dev": "nodemon src/unified-server.js",
+    "enhanced": "node src/enhanced-orchestrator.js",
+    "enhanced-dev": "nodemon src/enhanced-orchestrator.js",
     "mcp-tools": "node src/mcp-tool-server.js",
     "mcp-tools-dev": "nodemon src/mcp-tool-server.js",
-    "orchestrator": "node src/orchestrator-agent.js",
-    "maps": "node src/maps-agent.js",
-    "maps-dev": "nodemon src/maps-agent.js",
     "test": "jest",
-    "adk": "python src/tools.py"
+    "test-enhanced": "python3 test_enhanced_architecture.py",
+    "test-adk": "python3 test_adk_a2a_mcp.py"
   },
     "dependencies": {
         "@google-cloud/logging": "^11.2.1",
