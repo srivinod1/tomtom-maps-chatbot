@@ -852,14 +852,15 @@ async function handleOrchestratorChat(rpcRequest, res) {
     let agent_used = '';
     let query_type = 'general';
     
-    if (contextAnalysis.intent === 'search_places' && contextAnalysis.tool_needed === 'search_places') {
+    // Check if this is a location-based query that should go to Maps Agent
+    const locationIntents = ['search_places', 'geocode', 'directions', 'reverse_geocode'];
+    const locationTools = ['search_places', 'geocode_address', 'calculate_route', 'reverse_geocode_address', 'static_map'];
+    
+    if (locationIntents.includes(contextAnalysis.intent) && locationTools.includes(contextAnalysis.tool_needed)) {
       agent_used = 'maps_agent';
       query_type = 'location';
       
       try {
-        let searchLocation = null;
-        let searchQuery = contextAnalysis.search_query || 'places';
-
         // Prepare the request for Maps Agent - let it handle all TomTom API calls
         const mapsAgentRequest = {
           intent: contextAnalysis.intent,

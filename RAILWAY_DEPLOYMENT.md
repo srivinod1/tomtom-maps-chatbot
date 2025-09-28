@@ -5,10 +5,12 @@ This guide explains how to deploy the Google ADK + A2A + MCP Multi-Agent System 
 ## 🚂 Deployment Overview
 
 The deployment consists of a **single unified service** on Railway that runs:
-- Google ADK Orchestrator
+- Google ADK Orchestrator with LLM-powered context extraction
 - A2A Protocol for inter-agent communication  
-- MCP Tool Integration with fallback methods
-- Specialized agents (Maps, General AI)
+- MCP Tool Server for TomTom Maps API integration
+- Specialized agents (Maps Agent, General AI Agent)
+- Comprehensive observability and analytics
+- **LLM-powered intelligent routing** for directions, search, and geocoding queries
 
 ## 📋 Prerequisites
 
@@ -22,10 +24,11 @@ The deployment consists of a **single unified service** on Railway that runs:
 
 Ensure your repository contains:
 - `package.json` - Node.js dependencies and scripts
-- `src/mcp-server.js` - Main MCP server
-- `src/tomtom-maps/index.js` - TomTom API integration
+- `src/unified-server.js` - Main unified server with orchestrator and maps agent
+- `src/mcp-tool-server.js` - MCP tool server for TomTom API integration
+- `src/a2a-protocol.js` - Agent-to-Agent communication protocol
+- `src/mcp-client.js` - MCP client for tool discovery
 - `railway.json` - Railway configuration
-- `Procfile` - Process definition
 - `.env.example` - Environment variable template
 
 ### Step 2: Deploy to Railway
@@ -53,14 +56,14 @@ Ensure your repository contains:
    **Required:**
    ```
    TOMTOM_API_KEY=your_actual_tomtom_api_key_here
+   OPENAI_API_KEY=your_openai_api_key_here
    NODE_ENV=production
    ```
 
    **Optional (for enhanced features):**
    ```
-   OPENAI_API_KEY=your_openai_api_key_here
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
-   GOOGLE_CLOUD_PROJECT=your_gcp_project_id
+   GOOGLE_CLOUD_PROJECT=sunlit-precinct-473418-u9
    GOOGLE_APPLICATION_CREDENTIALS=your_service_account_json
    ```
 
@@ -92,6 +95,7 @@ Ensure your repository contains:
    railway variables set OPENAI_API_KEY=your_openai_api_key_here
    railway variables set ANTHROPIC_API_KEY=your_anthropic_api_key_here
    railway variables set NODE_ENV=production
+   railway variables set GOOGLE_CLOUD_PROJECT=your_gcp_project_id
    ```
 
 5. **Deploy**:
@@ -115,7 +119,7 @@ Ensure your repository contains:
 
 The `railway.json` file configures:
 - **Builder**: NIXPACKS (automatic Node.js detection)
-- **Start Command**: `npm start` (runs `node src/mcp-server.js`)
+- **Start Command**: `npm start` (runs `node src/unified-server.js`)
 - **Health Check**: Root path `/`
 - **Restart Policy**: On failure with max 10 retries
 
@@ -142,6 +146,16 @@ curl -X POST https://your-service-name-production-xxxx.up.railway.app \
 curl -X POST https://your-service-name-production-xxxx.up.railway.app \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "id": 1, "method": "orchestrator.chat", "params": {"message": "Find coffee shops near me", "user_id": "test_user"}}'
+
+# Test directions (Maps Agent)
+curl -X POST https://your-service-name-production-xxxx.up.railway.app \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "orchestrator.chat", "params": {"message": "directions from Times Square to Central Park", "user_id": "test_user"}}'
+
+# Test geocoding (Maps Agent)
+curl -X POST https://your-service-name-production-xxxx.up.railway.app \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "orchestrator.chat", "params": {"message": "What are the coordinates for Times Square New York?", "user_id": "test_user"}}'
 
 # Test general chat (General AI Agent)
 curl -X POST https://your-service-name-production-xxxx.up.railway.app \
@@ -246,7 +260,7 @@ async function sendMessage(message, userId = 'default') {
     body: JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
-      method: 'agent.chat',
+      method: 'orchestrator.chat',
       params: { message, user_id: userId }
     })
   });
@@ -278,7 +292,7 @@ function ChatComponent() {
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
-          method: 'agent.chat',
+          method: 'orchestrator.chat',
           params: { message, user_id: 'user123' }
         })
       });
