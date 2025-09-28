@@ -17,6 +17,9 @@ require('dotenv').config();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
+// Constants for TomTom API
+const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
+
 // Debug environment variables
 console.log('=== ENVIRONMENT VARIABLES DEBUG ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
@@ -41,9 +44,6 @@ const hasPlaceholderValues = OPENAI_API_KEY && OPENAI_API_KEY.includes('your_ope
 console.log('Has placeholder values:', hasPlaceholderValues);
 
 console.log('=== END ENVIRONMENT VARIABLES DEBUG ===');
-
-// Constants for TomTom API
-const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
 const TOMTOM_ORBIS_SEARCH_URL = 'https://api.tomtom.com/maps/orbis/places/nearbySearch/.json';
 const TOMTOM_GEOCODING_URL = 'https://api.tomtom.com/search/2/geocode';
 const TOMTOM_REVERSE_GEOCODING_URL = 'https://api.tomtom.com/search/2/reverseGeocode';
