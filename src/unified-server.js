@@ -711,62 +711,67 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
 // LLM-based geobias determination function
 async function determineGeobiasWithLLM(query, userContext) {
   try {
-    // Only use user context geobias if the query doesn't contain specific geographic indicators
     const queryLower = query.toLowerCase();
-    const hasSpecificLocation = queryLower.includes('amsterdam') || queryLower.includes('paris') || 
-                               queryLower.includes('eiffel tower') || queryLower.includes('white house') ||
-                               queryLower.includes('times square') || queryLower.includes('tokyo') ||
-                               queryLower.includes('london') || queryLower.includes('new york') ||
-                               queryLower.includes('washington') || queryLower.includes('hollywood') ||
-                               queryLower.includes('chicago') || queryLower.includes('boston') ||
-                               queryLower.includes('miami') || queryLower.includes('san francisco') ||
-                               queryLower.includes('los angeles') || queryLower.includes('seattle');
     
-    if (hasSpecificLocation) {
-      console.log('🌍 Query contains specific location, will use LLM to determine geobias');
-    } else if (userContext && userContext.lastCoordinates) {
+    // First, try direct keyword matching for major cities
+    if (queryLower.includes('london')) {
+      console.log('🌍 Direct match: London detected');
+      return 'point:51.5074,-0.1278';
+    }
+    if (queryLower.includes('paris')) {
+      console.log('🌍 Direct match: Paris detected');
+      return 'point:48.8566,2.3522';
+    }
+    if (queryLower.includes('amsterdam')) {
+      console.log('🌍 Direct match: Amsterdam detected');
+      return 'point:52.3676,4.9041';
+    }
+    if (queryLower.includes('tokyo')) {
+      console.log('🌍 Direct match: Tokyo detected');
+      return 'point:35.6762,139.6503';
+    }
+    if (queryLower.includes('new york')) {
+      console.log('🌍 Direct match: New York detected');
+      return 'point:40.7128,-74.0060';
+    }
+    if (queryLower.includes('washington') || queryLower.includes('white house')) {
+      console.log('🌍 Direct match: Washington DC detected');
+      return 'point:38.9072,-77.0369';
+    }
+    if (queryLower.includes('los angeles') || queryLower.includes('hollywood')) {
+      console.log('🌍 Direct match: Los Angeles detected');
+      return 'point:34.0522,-118.2437';
+    }
+    if (queryLower.includes('san francisco')) {
+      console.log('🌍 Direct match: San Francisco detected');
+      return 'point:37.7749,-122.4194';
+    }
+    if (queryLower.includes('chicago')) {
+      console.log('🌍 Direct match: Chicago detected');
+      return 'point:41.8781,-87.6298';
+    }
+    if (queryLower.includes('boston')) {
+      console.log('🌍 Direct match: Boston detected');
+      return 'point:42.3601,-71.0589';
+    }
+    if (queryLower.includes('miami')) {
+      console.log('🌍 Direct match: Miami detected');
+      return 'point:25.7617,-80.1918';
+    }
+    if (queryLower.includes('seattle')) {
+      console.log('🌍 Direct match: Seattle detected');
+      return 'point:47.6062,-122.3321';
+    }
+    
+    // If no direct match, use user context as fallback
+    if (userContext && userContext.lastCoordinates) {
       const { lat, lon } = userContext.lastCoordinates;
       console.log('🌍 Using user context geobias:', `point:${lat},${lon}`);
       return `point:${lat},${lon}`;
     }
     
-    // Use LLM to analyze the query and determine the most likely geographic region
-    const geobiasPrompt = `Analyze this location query and determine the most appropriate geographic region for geocoding bias.
-
-Query: "${query}"
-
-Based on the query, determine which major city/region this location is most likely referring to. Consider:
-- Famous landmarks and their typical locations
-- Address patterns (e.g., "1600 Pennsylvania Avenue" = Washington DC)
-- Cultural context and common references
-- Geographic indicators in the query
-
-Respond with ONLY the coordinates in this exact format: "point:lat,lon"
-
-Common reference points:
-- Washington DC: point:38.9072,-77.0369
-- New York City: point:40.7128,-74.0060
-- Tokyo: point:35.6762,139.6503
-- Paris: point:48.8566,2.3522
-- London: point:51.5074,-0.1278
-- Los Angeles: point:34.0522,-118.2437
-- San Francisco: point:37.7749,-122.4194
-- Chicago: point:41.8781,-87.6298
-- Boston: point:42.3601,-71.0589
-- Miami: point:25.7617,-80.1918
-
-If uncertain, respond with "none" to disable geobias.`;
-
-    const response = await callOpenAI(geobiasPrompt);
-    const geobiasResult = response.trim();
-    
-    if (geobiasResult === 'none' || !geobiasResult.startsWith('point:')) {
-      console.log('🌍 No geobias determined by LLM');
-      return null;
-    }
-    
-    console.log('🌍 LLM determined geobias:', geobiasResult);
-    return geobiasResult;
+    console.log('🌍 No specific location detected, no geobias applied');
+    return null;
     
   } catch (error) {
     console.error('Error determining geobias with LLM:', error);
