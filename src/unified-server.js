@@ -1537,7 +1537,7 @@ async function handleMapsToolsCall(rpcRequest, res) {
 
 // Maps Agent: Process location requests using MCP internally
 async function processLocationRequest(payload) {
-  const { intent, location_context, search_query, tool_needed, user_context } = payload;
+  const { intent, location_context, search_query, user_context } = payload;
   
   try {
     let response = '';
@@ -1633,7 +1633,7 @@ async function executeSingleTool(intent, location_context, search_query, user_co
     }
     
         // Execute the appropriate tool based on intent
-        switch (tool_needed) {
+        switch (intent) {
           case 'search_places':
             try {
               // Try MCP tool first, fallback to direct API call
