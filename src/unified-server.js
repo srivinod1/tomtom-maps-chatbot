@@ -345,9 +345,11 @@ Respond with a JSON object in this exact format:
     if (OPENAI_API_KEY) {
       console.log('Using OpenAI for context extraction');
       llmResponse = await callOpenAI(contextPrompt, '', userContext.userId || 'default');
+      console.log('OpenAI raw response:', llmResponse);
     } else if (ANTHROPIC_API_KEY) {
       console.log('Using Anthropic for context extraction');
       llmResponse = await callAnthropic(contextPrompt, '', userContext.userId || 'default');
+      console.log('Anthropic raw response:', llmResponse);
     } else {
       console.log('No LLM API keys available - this should not happen in production');
       throw new Error('No LLM API keys configured - cannot process request');
@@ -1128,6 +1130,7 @@ async function handleOrchestratorChat(rpcRequest, res) {
     
     // Debug: Log the LLM analysis
     console.log('=== LLM ANALYSIS RESULT ===');
+    console.log('Parsed contextAnalysis:', JSON.stringify(contextAnalysis, null, 2));
     console.log('Intent:', contextAnalysis.intent);
     console.log('Tool needed:', contextAnalysis.tool_needed);
     console.log('Location context:', JSON.stringify(contextAnalysis.location_context, null, 2));
