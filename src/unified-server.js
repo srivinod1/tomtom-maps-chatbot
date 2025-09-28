@@ -298,27 +298,40 @@ ANALYSIS REQUIRED:
 3. QUERY PROCESSING: What should be searched for or what action should be taken?
 4. AGENT ROUTING: Which agent should handle this request?
 
-LOCATION QUERY INDICATORS:
-- "find", "search", "near", "close to", "restaurants", "coffee shops", "places"
-- "coordinates", "address", "geocode", "lat", "long", "latitude", "longitude"
-- "directions", "route", "how to get to", "drive to"
-- "that address", "this location", "near me", "around here"
+LOCATION QUERY INDICATORS (be very liberal in detection):
+- SEARCH QUERIES: "find", "search", "near", "close to", "restaurants", "coffee shops", "places", "shops", "stores", "hotels", "gas stations", "pharmacy", "hospital", "bank", "atm"
+- GEOCODING QUERIES: "coordinates", "address", "geocode", "lat", "long", "latitude", "longitude", "where is", "location of", "exact location"
+- DIRECTIONS QUERIES: "directions", "route", "how to get to", "drive to", "walk to", "travel to", "go to", "navigate to", "how do I get", "how long does it take", "travel time", "driving time", "walking time", "distance", "from X to Y"
+- MATRIX ROUTING QUERIES: "matrix routing", "travel time matrix", "distance matrix", "compare travel times", "between multiple locations", "from A, B to X, Y", "travel times between", "compare routes"
+- REVERSE GEOCODING: "what is this address", "address of these coordinates", "reverse geocode"
+- STATIC MAPS: "show me a map", "map of", "visualize", "display map"
 
 CONTEXT REFERENCES:
 - "that address" = use last known address
 - "near me" = use last known coordinates
 - "this location" = use last known location
+- "here" = use last known location
+- "there" = use last known location
+
+DIRECTIONS QUERY EXAMPLES:
+- "how does it take for me to travel from X to Y" → directions intent
+- "directions from X to Y" → directions intent
+- "how do I get from X to Y" → directions intent
+- "travel time from X to Y" → directions intent
+- "how long to get from X to Y" → directions intent
+
+IMPORTANT: Be very liberal in detecting location-based queries. When in doubt, classify as location query and route to Maps Agent.
 
 Respond with a JSON object in this exact format:
 {
-  "intent": "search_places|geocode|directions|general_chat",
+  "intent": "search_places|geocode|directions|matrix_routing|reverse_geocode|static_map|general_chat",
   "location_context": {
     "source": "coordinates|address|context_reference|none",
     "coordinates": {"lat": number, "lon": number} | null,
     "address": "string" | null
   },
   "search_query": "string" | null,
-  "tool_needed": "search_places|geocode_address|reverse_geocode|calculate_route|static_map|none",
+  "tool_needed": "search_places|geocode_address|reverse_geocode_address|calculate_route|matrix_routing|static_map|none",
   "confidence": 0.0-1.0
 }`;
 
@@ -741,6 +754,300 @@ async function calculateRoute(origin, destination) {
   }
 }
 
+// Sequential processing for directions (geocoding + routing)
+async function processDirectionsSequential(searchQuery, userContext) {
+  try {
+    console.log('🔄 Processing directions sequentially:', searchQuery);
+    
+    // Step 1: Extract addresses using regex (deterministic)
+    const routeMatch = searchQuery.match(/from\s+(.+?)\s+to\s+(.+)/i);
+    if (!routeMatch) {
+      return {
+        success: false,
+        response: `I need more specific information for directions. Please provide addresses like "directions from [origin] to [destination]".`
+      };
+    }
+    
+    const originAddress = routeMatch[1].trim();
+    const destinationAddress = routeMatch[2].trim();
+    
+    console.log('📍 Extracted origin:', originAddress);
+    console.log('📍 Extracted destination:', destinationAddress);
+    
+    // Step 2: Geocode both addresses (parallel API calls)
+    console.log('🔍 Geocoding addresses...');
+    const [originGeocode, destGeocode] = await Promise.all([
+      geocodeAddress(originAddress),
+      geocodeAddress(destinationAddress)
+    ]);
+    
+    if (!originGeocode.results || originGeocode.results.length === 0) {
+      return {
+        success: false,
+        response: `I couldn't find coordinates for the origin address: ${originAddress}. Please check the address and try again.`
+      };
+    }
+    
+    if (!destGeocode.results || destGeocode.results.length === 0) {
+      return {
+        success: false,
+        response: `I couldn't find coordinates for the destination address: ${destinationAddress}. Please check the address and try again.`
+      };
+    }
+    
+    const origin = originGeocode.results[0].position;
+    const destination = destGeocode.results[0].position;
+    
+    console.log('✅ Geocoding successful');
+    console.log('📍 Origin coordinates:', origin);
+    console.log('📍 Destination coordinates:', destination);
+    
+    // Step 3: Calculate route using TomTom API
+    console.log('🚗 Calculating route...');
+    const routeResult = await calculateRoute(
+      { lat: origin.lat, lon: origin.lon },
+      { lat: destination.lat, lon: destination.lon }
+    );
+    
+    if (!routeResult.routes || routeResult.routes.length === 0) {
+      return {
+        success: false,
+        response: `I couldn't find a route from ${originAddress} to ${destinationAddress}. Please check the addresses and try again.`
+      };
+    }
+    
+    // Step 4: Format response (deterministic)
+    const route = routeResult.routes[0];
+    const summary = route.summary;
+    
+    let response = `Here's your route from ${originAddress} to ${destinationAddress}:\n\n`;
+    response += `🚗 **Driving Time:** ${Math.round(summary.travelTimeInSeconds / 60)} minutes\n`;
+    response += `📏 **Distance:** ${(summary.lengthInMeters / 1000).toFixed(1)} km\n`;
+    response += `⛽ **Fuel Cost:** ${summary.fuelCostInUSD ? `$${summary.fuelCostInUSD.toFixed(2)}` : 'Not available'}\n\n`;
+    response += `📍 **From:** ${originAddress}\n`;
+    response += `📍 **To:** ${destinationAddress}`;
+    
+    // Update context with the route information
+    const updated_context = {
+      lastCoordinates: { lat: destination.lat, lon: destination.lon },
+      lastLocation: { source: 'address', address: destinationAddress }
+    };
+    
+    console.log('✅ Directions processing complete');
+    
+    return {
+      success: true,
+      response: response,
+      updated_context: updated_context
+    };
+    
+  } catch (error) {
+    console.error('Error in processDirectionsSequential:', error);
+    return {
+      success: false,
+      error: error.message,
+      response: `I'm having trouble calculating directions right now. Please try again later.`
+    };
+  }
+}
+
+// Sequential processing for matrix routing (geocoding + matrix)
+async function processMatrixRoutingSequential(searchQuery, userContext) {
+  try {
+    console.log('🔄 Processing matrix routing sequentially:', searchQuery);
+    
+    // Step 1: Extract locations using regex (deterministic)
+    const locations = extractLocationsFromQuery(searchQuery);
+    
+    if (locations.length < 2) {
+      return {
+        success: false,
+        response: `I need at least 2 locations for matrix routing. Please provide locations like "matrix routing from A, B to X, Y" or "matrix routing between A, B, C".`
+      };
+    }
+    
+    console.log('📍 Extracted locations:', locations);
+    
+    // Step 2: Geocode all locations (parallel API calls)
+    console.log('🔍 Geocoding all locations...');
+    const geocodeResults = await Promise.all(
+      locations.map(location => geocodeAddress(location))
+    );
+    
+    // Filter successful geocoding results
+    const geocodedLocations = [];
+    for (let i = 0; i < geocodeResults.length; i++) {
+      if (geocodeResults[i].results && geocodeResults[i].results.length > 0) {
+        geocodedLocations.push({
+          address: locations[i],
+          coordinates: geocodeResults[i].results[0].position
+        });
+      } else {
+        console.warn(`Failed to geocode: ${locations[i]}`);
+      }
+    }
+    
+    if (geocodedLocations.length < 2) {
+      return {
+        success: false,
+        response: `I couldn't find coordinates for enough locations. Please check the addresses and try again.`
+      };
+    }
+    
+    console.log('✅ Geocoding successful for', geocodedLocations.length, 'locations');
+    
+    // Step 3: Calculate matrix routing using TomTom API
+    console.log('📊 Calculating travel time matrix...');
+    const matrixResult = await calculateMatrixRouting(geocodedLocations);
+    
+    if (!matrixResult || !matrixResult.matrix) {
+      return {
+        success: false,
+        response: `I couldn't calculate the travel time matrix for those locations. Please check the addresses and try again.`
+      };
+    }
+    
+    // Step 4: Format response (deterministic)
+    let response = `Here's the travel time matrix for your locations:\n\n`;
+    
+    // Format the matrix as a table
+    const matrix = matrixResult.matrix;
+    const locationNames = geocodedLocations.map(loc => loc.address);
+    
+    response += `| From \\ To | ${locationNames.join(' | ')} |\n`;
+    response += `|-----------|${locationNames.map(() => '--------').join('|')}|\n`;
+    
+    for (let i = 0; i < matrix.length; i++) {
+      response += `| **${locationNames[i]}** | `;
+      for (let j = 0; j < matrix[i].length; j++) {
+        if (i === j) {
+          response += `- | `;
+        } else {
+          const travelTime = matrix[i][j];
+          if (travelTime && travelTime > 0) {
+            response += `${Math.round(travelTime / 60)} min | `;
+          } else {
+            response += `N/A | `;
+          }
+        }
+      }
+      response += `\n`;
+    }
+    
+    response += `\n📍 **Locations:**\n`;
+    geocodedLocations.forEach((loc, index) => {
+      response += `${index + 1}. ${loc.address}\n`;
+    });
+    
+    console.log('✅ Matrix routing processing complete');
+    
+    return {
+      success: true,
+      response: response,
+      updated_context: {
+        lastCoordinates: geocodedLocations[geocodedLocations.length - 1].coordinates,
+        lastLocation: { source: 'address', address: geocodedLocations[geocodedLocations.length - 1].address }
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error in processMatrixRoutingSequential:', error);
+    return {
+      success: false,
+      error: error.message,
+      response: `I'm having trouble calculating the travel time matrix right now. Please try again later.`
+    };
+  }
+}
+
+// Helper function to extract locations from query
+function extractLocationsFromQuery(searchQuery) {
+  const locations = [];
+  
+  // Try "from A, B to X, Y" pattern
+  const fromToMatch = searchQuery.match(/from\s+(.+?)\s+to\s+(.+)/i);
+  if (fromToMatch) {
+    const origins = fromToMatch[1].split(',').map(addr => addr.trim());
+    const destinations = fromToMatch[2].split(',').map(addr => addr.trim());
+    locations.push(...origins, ...destinations);
+    return locations;
+  }
+  
+  // Try "between A, B, C" pattern
+  const betweenMatch = searchQuery.match(/between\s+(.+)/i);
+  if (betweenMatch) {
+    const locationList = betweenMatch[1].split(',').map(addr => addr.trim());
+    locations.push(...locationList);
+    return locations;
+  }
+  
+  // Try comma-separated list
+  const commaMatch = searchQuery.match(/([^,]+(?:,\s*[^,]+)+)/);
+  if (commaMatch) {
+    const locationList = commaMatch[1].split(',').map(addr => addr.trim());
+    locations.push(...locationList);
+    return locations;
+  }
+  
+  return locations;
+}
+
+async function calculateMatrixRouting(locations) {
+  try {
+    // TomTom Matrix Routing API endpoint
+    const matrixUrl = 'https://api.tomtom.com/routing/1/matrix/sync/json';
+    
+    // Prepare origins and destinations (for matrix routing, we use all locations as both origins and destinations)
+    const origins = locations.map(loc => `${loc.coordinates.lat},${loc.coordinates.lon}`);
+    const destinations = locations.map(loc => `${loc.coordinates.lat},${loc.coordinates.lon}`);
+    
+    const params = {
+      key: TOMTOM_API_KEY,
+      origins: origins.join(';'),
+      destinations: destinations.join(';'),
+      travelMode: 'car',
+      traffic: 'true'
+    };
+
+    console.log('Matrix routing request:', params);
+    const response = await axios.get(matrixUrl, { params });
+    
+    if (response.data && response.data.matrix) {
+      // Convert TomTom matrix format to our format
+      const matrix = response.data.matrix;
+      const travelTimes = [];
+      
+      for (let i = 0; i < matrix.length; i++) {
+        const row = [];
+        for (let j = 0; j < matrix[i].length; j++) {
+          if (i === j) {
+            row.push(0); // Same location
+          } else {
+            const route = matrix[i][j];
+            if (route && route.summary) {
+              row.push(route.summary.travelTimeInSeconds);
+            } else {
+              row.push(-1); // No route found
+            }
+          }
+        }
+        travelTimes.push(row);
+      }
+      
+      return {
+        matrix: travelTimes,
+        origins: locations.map(loc => loc.address),
+        destinations: locations.map(loc => loc.address)
+      };
+    }
+    
+    return { matrix: [] };
+  } catch (error) {
+    console.error('Error calculating matrix routing:', error);
+    throw error;
+  }
+}
+
 async function generateStaticMapUrl(center, zoom = 12, markers = []) {
   try {
     const params = new URLSearchParams({
@@ -819,6 +1126,15 @@ async function handleOrchestratorChat(rpcRequest, res) {
     // Use LLM-based context extraction and intent understanding
     const contextAnalysis = await extractContextAndIntent(message, userContext, conversationContext);
     
+    // Debug: Log the LLM analysis
+    console.log('=== LLM ANALYSIS RESULT ===');
+    console.log('Intent:', contextAnalysis.intent);
+    console.log('Tool needed:', contextAnalysis.tool_needed);
+    console.log('Location context:', JSON.stringify(contextAnalysis.location_context, null, 2));
+    console.log('Search query:', contextAnalysis.search_query);
+    console.log('Confidence:', contextAnalysis.confidence);
+    console.log('=== END LLM ANALYSIS ===');
+    
     // Update context with extracted information
     if (contextAnalysis.location_context && contextAnalysis.location_context.source !== 'none') {
       updateUserContext(user_id, {
@@ -833,8 +1149,8 @@ async function handleOrchestratorChat(rpcRequest, res) {
     let query_type = 'general';
     
     // Check if this is a location-based query that should go to Maps Agent
-    const locationIntents = ['search_places', 'geocode', 'directions', 'reverse_geocode'];
-    const locationTools = ['search_places', 'geocode_address', 'calculate_route', 'reverse_geocode_address', 'static_map'];
+    const locationIntents = ['search_places', 'geocode', 'directions', 'matrix_routing', 'reverse_geocode', 'static_map'];
+    const locationTools = ['search_places', 'geocode_address', 'calculate_route', 'matrix_routing', 'reverse_geocode_address', 'static_map'];
     
     if (locationIntents.includes(contextAnalysis.intent) && locationTools.includes(contextAnalysis.tool_needed)) {
       agent_used = 'maps_agent';
@@ -1227,6 +1543,61 @@ async function processLocationRequest(payload) {
     let response = '';
     let updated_context = null;
     
+    // Check if this requires sequential tool calling (directions/matrix with addresses)
+    const requiresSequential = ['directions', 'matrix_routing'].includes(intent) && 
+                              (location_context.source === 'address' || search_query);
+    
+    if (requiresSequential) {
+      console.log('🔄 Sequential tool calling required for:', intent);
+      return await executeSequentialTools(intent, search_query, user_context);
+    }
+    
+    // Single tool execution for simple queries
+    return await executeSingleTool(intent, location_context, search_query, user_context);
+    
+  } catch (error) {
+    console.error('Error in processLocationRequest:', error);
+    return {
+      success: false,
+      error: error.message,
+      response: "I'm having trouble processing your location request. Please try again."
+    };
+  }
+}
+
+// Execute sequential tools (geocoding + routing/matrix)
+async function executeSequentialTools(intent, searchQuery, userContext) {
+  try {
+    let response = '';
+    let updated_context = null;
+    
+    if (intent === 'directions') {
+      return await processDirectionsSequential(searchQuery, userContext);
+    } else if (intent === 'matrix_routing') {
+      return await processMatrixRoutingSequential(searchQuery, userContext);
+    }
+    
+    return {
+      success: false,
+      error: 'Unknown sequential intent',
+      response: "I don't know how to process that type of request."
+    };
+  } catch (error) {
+    console.error('Error in executeSequentialTools:', error);
+    return {
+      success: false,
+      error: error.message,
+      response: "I'm having trouble processing your request. Please try again."
+    };
+  }
+}
+
+// Execute single tool (search, geocoding, etc.)
+async function executeSingleTool(intent, location_context, search_query, user_context) {
+  try {
+    let response = '';
+    let updated_context = null;
+    
     // Determine search location based on context analysis
     let searchLocation = null;
     
@@ -1345,6 +1716,16 @@ async function processLocationRequest(payload) {
               console.error('MCP reverse geocode tool error:', error);
               response = `I'm having trouble reverse geocoding those coordinates. Please try again later.`;
             }
+            break;
+        
+          case 'calculate_route':
+            // This case is now handled by sequential processing
+            response = `I can help you with location-based queries. What would you like to do?`;
+            break;
+        
+          case 'matrix_routing':
+            // This case is now handled by sequential processing
+            response = `I can help you with location-based queries. What would you like to do?`;
             break;
         
       default:
