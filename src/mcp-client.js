@@ -19,7 +19,8 @@ class MCPClient {
   async discoverTools() {
     try {
       const response = await axios.get(`${this.toolServerUrl}/tools`);
-      this.tools = response.data;
+      // Handle both array and object responses
+      this.tools = Array.isArray(response.data) ? response.data : response.data.tools || [];
       console.log(`🔍 Discovered ${this.tools.length} tools from MCP server`);
       return this.tools;
     } catch (error) {
