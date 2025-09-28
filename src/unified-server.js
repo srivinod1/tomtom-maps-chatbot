@@ -280,6 +280,24 @@ async function extractContextAndIntent(message, userContext, conversationContext
 2. EXTRACT location context from messages or conversation history
 3. ROUTE requests to the appropriate specialized agent (Maps Agent for location queries, General AI for other queries)
 
+CRITICAL: "I want to go to [city]" and "I need to go to [city]" are ALWAYS trip planning statements and should be classified as general_chat, NEVER as search_places or directions.
+
+CRITICAL CLASSIFICATION RULES - READ THESE FIRST:
+MANDATORY EXAMPLES - COPY THESE EXACTLY:
+- "I am going to Paris" → general_chat (trip planning statement, NOT search)
+- "I'm planning to visit London" → general_chat (trip planning statement, NOT search)
+- "I'm traveling to Tokyo" → general_chat (trip planning statement, NOT search)
+- "I want to go to Paris" → general_chat (trip planning statement, NOT search)
+- "I need to go to London" → general_chat (trip planning statement, NOT search)
+- "I'm visiting [city], what should I see?" → general_chat (trip planning with question, NOT search)
+- "I'm traveling to [city], any recommendations?" → general_chat (trip planning with question, NOT search)
+- "Find restaurants in Paris" → search_places (explicit search request)
+- "What are the coordinates for Paris?" → geocode (explicit geocoding request)
+- "Directions from Paris to London" → directions (explicit directions request)
+- "Where is the Eiffel Tower?" → geocode (landmark location request)
+
+IMPORTANT: If the user says "I want to go to [city]" or "I need to go to [city]", this is ALWAYS general_chat, NEVER search_places or directions.
+
 SYSTEM CAPABILITIES:
 - Maps Agent: Handles location search, geocoding, directions, static maps
 - General AI Agent: Handles general conversation, knowledge questions, greetings
@@ -320,8 +338,24 @@ GENERAL CONVERSATION INDICATORS (NOT location-based):
 - GENERAL KNOWLEDGE: "tell me about", "explain", "what is", "how does", "why", "when", "who", "history", "facts"
 - GREETINGS: "hello", "hi", "good morning", "good afternoon", "good evening", "how are you"
 - CONVERSATION: "thank you", "thanks", "please", "help", "assist", "can you", "could you"
+- TRIP PLANNING STATEMENTS: "I am going to", "I'm planning to visit", "I'm traveling to", "I'm visiting", "I'm heading to", "I'm going to be in", "I'm staying in", "I want to go to", "I need to go to", "I'm going to be visiting"
+- INFORMATIONAL STATEMENTS: "I am in", "I'm in", "I'm at", "I'm currently in", "I'm staying at", "I'm visiting", "I'm going to be in"
 
-IMPORTANT: Weather queries like "tell me about the weather in [location]" should be classified as general_chat, not location-based, even if they mention a location name.
+IMPORTANT: 
+- Weather queries like "tell me about the weather in [location]" should be classified as general_chat, not location-based, even if they mention a location name.
+- Trip planning statements like "I am going to Paris" or "I'm planning to visit London" should be classified as general_chat, not search_places, even if they mention a location name.
+- Trip planning with questions like "I'm visiting London, what should I see?" or "I'm traveling to Tokyo, any recommendations?" should be classified as general_chat, not search_places.
+- Only classify as location-based if the user is explicitly asking for maps, places, directions, or geocoding services.
+
+CLASSIFICATION EXAMPLES:
+- "I am going to Paris" → general_chat (trip planning statement)
+- "I'm planning to visit London" → general_chat (trip planning statement)
+- "I'm traveling to Tokyo" → general_chat (trip planning statement)
+- "I'm visiting New York" → general_chat (trip planning statement)
+- "Find restaurants in Paris" → search_places (explicit search request)
+- "What are the coordinates for Paris?" → geocode (explicit geocoding request)
+- "Directions from Paris to London" → directions (explicit directions request)
+- "Tell me about the weather in Paris" → general_chat (weather query)
 
 CONTEXT REFERENCES:
 - "that address" = use last known address
@@ -400,7 +434,7 @@ async function callOpenAI(message, context = '', userId = 'anonymous') {
   const llmCall = {
     component: 'llmCalls',
     provider: 'openai',
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4.1',
     prompt: `${context}\n\n${message}`,
     userId: userId,
     correlationId: correlationId,
@@ -418,7 +452,7 @@ async function callOpenAI(message, context = '', userId = 'anonymous') {
     console.log('API Key starts with sk-:', OPENAI_API_KEY ? OPENAI_API_KEY.startsWith('sk-') : false);
     
     const response = await axios.post('https://api.openai.com/v1/chat/completions', {
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4.1',
       messages: [
         { role: 'system', content: context },
         { role: 'user', content: message }
