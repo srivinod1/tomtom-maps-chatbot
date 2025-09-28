@@ -71,8 +71,11 @@ const orchestratorA2A = new A2AProtocol('orchestrator-agent', 'orchestrator', `h
 const mapsA2A = new A2AProtocol('maps-agent', 'maps', `http://localhost:${PORT}`);
 
 // Initialize MCP client for tool access
-const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || `http://localhost:${PORT}`;
+const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || 'http://localhost:3003';
 const mcpClient = new MCPClient(MCP_TOOL_SERVER_URL);
+
+// Import MCP tool server for direct tool execution
+const MCPToolServer = require('./mcp-tool-server.js');
 
 // Initialize MCP client and discover tools
 async function initializeMCPClient() {
@@ -113,100 +116,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// MCP Tool Server endpoints (integrated)
-app.get('/tools', (req, res) => {
-  res.json({
-    tools: [
-      {
-        name: 'search',
-        description: 'Search for places using TomTom API',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            query: { type: 'string', description: 'Search query' },
-            lat: { type: 'number', description: 'Latitude' },
-            lon: { type: 'number', description: 'Longitude' },
-            radius: { type: 'number', description: 'Search radius in meters', default: 5000 },
-            limit: { type: 'number', description: 'Maximum number of results', default: 10 }
-          },
-          required: ['query', 'lat', 'lon']
-        }
-      },
-      {
-        name: 'geocode',
-        description: 'Convert address to coordinates',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            address: { type: 'string', description: 'Address to geocode' },
-            limit: { type: 'number', description: 'Maximum number of results', default: 1 }
-          },
-          required: ['address']
-        }
-      },
-      {
-        name: 'reverse-geocode',
-        description: 'Convert coordinates to address',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            lat: { type: 'number', description: 'Latitude' },
-            lon: { type: 'number', description: 'Longitude' }
-          },
-          required: ['lat', 'lon']
-        }
-      },
-      {
-        name: 'directions',
-        description: 'Get directions between two points',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            from: { type: 'string', description: 'Starting address or coordinates' },
-            to: { type: 'string', description: 'Destination address or coordinates' },
-            travelMode: { type: 'string', description: 'Travel mode', default: 'car' }
-          },
-          required: ['from', 'to']
-        }
-      },
-      {
-        name: 'static-map',
-        description: 'Generate static map image',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            center: { type: 'string', description: 'Center coordinates' },
-            zoom: { type: 'number', description: 'Zoom level', default: 10 },
-            width: { type: 'number', description: 'Image width', default: 400 },
-            height: { type: 'number', description: 'Image height', default: 300 }
-          },
-          required: ['center']
-        }
-      }
-    ]
-  });
-});
-
-// MCP Tool execution endpoint
-app.post('/tools/:toolName', async (req, res) => {
-  const { toolName } = req.params;
-  const input = req.body;
-  
-  try {
-    // Import the MCP tool server functionality
-    const { MCPToolServer } = await import('./mcp-tool-server.js');
-    const toolServer = new MCPToolServer();
-    
-    const result = await toolServer.executeTool(toolName, input);
-    res.json(result);
-  } catch (error) {
-    console.error(`Error executing tool ${toolName}:`, error);
-    res.status(500).json({
-      error: 'Tool execution failed',
-      message: error.message
-    });
-  }
-});
+// MCP Tool Server endpoints are now handled by the separate MCP Tool Server on port 3003
 
 // JSON-RPC endpoint for Orchestrator (Frontend Interface)
 app.post('/', async (req, res) => {

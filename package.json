@@ -3,23 +3,25 @@
     "version": "1.0.0",
     "description": "TomTom Maps integration for Model Context Protocol and Google ADK",
     "main": "src/unified-server.js",
-  "scripts": {
-    "start": "node src/unified-server.js",
-    "dev": "nodemon src/unified-server.js",
-    "enhanced": "node src/enhanced-orchestrator.js",
-    "enhanced-dev": "nodemon src/enhanced-orchestrator.js",
-    "mcp-tools": "node src/mcp-tool-server.js",
-    "mcp-tools-dev": "nodemon src/mcp-tool-server.js",
-    "test": "jest",
-    "test-enhanced": "python3 test_enhanced_architecture.py",
-    "test-adk": "python3 test_adk_a2a_mcp.py"
-  },
+    "scripts": {
+        "start": "node src/unified-server.js",
+        "start:all": "concurrently \"npm run mcp-tools\" \"npm start\"",
+        "dev": "nodemon src/unified-server.js",
+        "enhanced": "node src/enhanced-orchestrator.js",
+        "enhanced-dev": "nodemon src/enhanced-orchestrator.js",
+        "mcp-tools": "node src/mcp-tool-server.js",
+        "mcp-tools-dev": "nodemon src/mcp-tool-server.js",
+        "test": "jest",
+        "test-enhanced": "python3 test_enhanced_architecture.py",
+        "test-adk": "python3 test_adk_a2a_mcp.py"
+    },
     "dependencies": {
         "@google-cloud/logging": "^11.2.1",
         "@google-cloud/monitoring": "^5.3.0",
         "@google-cloud/vertexai": "^1.10.0",
         "axios": "^1.6.8",
         "body-parser": "^1.20.2",
+        "concurrently": "^8.2.2",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",
         "express": "^4.18.3"
