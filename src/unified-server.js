@@ -711,8 +711,20 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
 // LLM-based geobias determination function
 async function determineGeobiasWithLLM(query, userContext) {
   try {
-    // If user has recent location context, use that as primary geobias
-    if (userContext && userContext.lastCoordinates) {
+    // Only use user context geobias if the query doesn't contain specific geographic indicators
+    const queryLower = query.toLowerCase();
+    const hasSpecificLocation = queryLower.includes('amsterdam') || queryLower.includes('paris') || 
+                               queryLower.includes('eiffel tower') || queryLower.includes('white house') ||
+                               queryLower.includes('times square') || queryLower.includes('tokyo') ||
+                               queryLower.includes('london') || queryLower.includes('new york') ||
+                               queryLower.includes('washington') || queryLower.includes('hollywood') ||
+                               queryLower.includes('chicago') || queryLower.includes('boston') ||
+                               queryLower.includes('miami') || queryLower.includes('san francisco') ||
+                               queryLower.includes('los angeles') || queryLower.includes('seattle');
+    
+    if (hasSpecificLocation) {
+      console.log('🌍 Query contains specific location, will use LLM to determine geobias');
+    } else if (userContext && userContext.lastCoordinates) {
       const { lat, lon } = userContext.lastCoordinates;
       console.log('🌍 Using user context geobias:', `point:${lat},${lon}`);
       return `point:${lat},${lon}`;
