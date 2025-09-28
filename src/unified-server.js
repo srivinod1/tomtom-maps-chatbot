@@ -479,6 +479,9 @@ function getUserContext(userId) {
     userContexts[userId] = {
       lastLocation: null,
       lastCoordinates: null,
+      lastSearchType: null,
+      lastSearchResults: null,
+      lastSearchLocation: null,
       conversationHistory: []
     };
   }
@@ -488,6 +491,14 @@ function getUserContext(userId) {
 function updateUserContext(userId, updates) {
   const context = getUserContext(userId);
   Object.assign(context, updates);
+  
+  // Store search results for conversational references
+  if (updates.lastSearchResults) {
+    context.lastSearchResults = updates.lastSearchResults;
+  }
+  if (updates.lastSearchType) {
+    context.lastSearchType = updates.lastSearchType;
+  }
 }
 
 function getConversationContext(userId, limit = 10) {
@@ -495,8 +506,43 @@ function getConversationContext(userId, limit = 10) {
   return userContext.conversationHistory.slice(-limit);
 }
 
+// Enhanced context resolution for conversational references
+function resolveConversationalReference(message, userContext) {
+  const lowerMessage = message.toLowerCase();
+  
+  // Handle "the same" references
+  if (lowerMessage.includes('the same') && userContext.lastSearchType) {
+    return {
+      searchType: userContext.lastSearchType,
+      shouldUseContext: true
+    };
+  }
+  
+  // Handle "them", "they" references
+  if ((lowerMessage.includes('them') || lowerMessage.includes('they')) && userContext.lastSearchResults) {
+    return {
+      searchType: userContext.lastSearchType,
+      shouldUseContext: true,
+      isReference: true
+    };
+  }
+  
+  // Handle "near [city]" without specifying what
+  if (lowerMessage.includes('near') && !lowerMessage.includes('restaurant') && !lowerMessage.includes('coffee') && !lowerMessage.includes('hotel') && userContext.lastSearchType) {
+    return {
+      searchType: userContext.lastSearchType,
+      shouldUseContext: true
+    };
+  }
+  
+  return {
+    searchType: null,
+    shouldUseContext: false
+  };
+}
+
 // LLM-based context extraction and intent understanding
-async function extractContextAndIntent(message, userContext, conversationContext) {
+async function extractContextAndIntent(message, userContext, conversationContext, contextRef = null) {
   const contextPrompt = `You are an intelligent orchestrator agent for a location-based chatbot system. Your role is to:
 
 1. ANALYZE user messages to understand their intent
@@ -530,15 +576,50 @@ USER'S CURRENT MESSAGE: "${message}"
 CONVERSATION HISTORY:
 ${conversationContext.map(msg => `${msg.type}: ${msg.message}`).join('\n')}
 
+CONVERSATIONAL REFERENCE ANALYSIS:
+${contextRef.shouldUseContext ? `DETECTED REFERENCE: ${JSON.stringify(contextRef)}` : 'No conversational reference detected'}
+
 USER'S STORED CONTEXT:
 - Last location: ${userContext.lastLocation ? JSON.stringify(userContext.lastLocation) : 'None'}
 - Last coordinates: ${userContext.lastCoordinates ? JSON.stringify(userContext.lastCoordinates) : 'None'}
+- Last search type: ${userContext.lastSearchType || 'None'}
+- Last search results: ${userContext.lastSearchResults ? 'Available' : 'None'}
+- Last search location: ${userContext.lastSearchLocation || 'None'}
+
+CONTEXT USAGE EXAMPLES:
+- If lastSearchType = "restaurants" and user says "find me near paris central" → search for "restaurants near Paris Central"
+- If lastSearchType = "restaurants" and user says "the same near london airport" → search for "restaurants near London Airport"  
+- If user says "how far are they" and lastSearchResults exists → calculate directions to those results
+- If user says "near [city]" without specifying what → use lastSearchType + new city
 
 ANALYSIS REQUIRED:
 1. INTENT CLASSIFICATION: Is this a location-based query or general conversation?
 2. LOCATION EXTRACTION: What location should be used? (extract from message, use context, or reference previous location)
 3. QUERY PROCESSING: What should be searched for or what action should be taken? (for directions/matrix, extract the full query with locations)
 4. AGENT ROUTING: Which agent should handle this request?
+
+CONVERSATIONAL CONTEXT HANDLING - CRITICAL RULES:
+
+1. PRONOUN RESOLUTION:
+   - "the same" = use last search type (restaurants, coffee shops, etc.)
+   - "them", "they", "it" = refer to last search results
+   - "there" = use last location from context
+   - "near [city]" without specifying what = use last search type + new city
+
+2. CONTEXT CONTINUATION:
+   - If last search was "restaurants" and user says "find me near paris central" → search_places for "restaurants near Paris Central"
+   - If last search was "restaurants" and user says "the same near london airport" → search_places for "restaurants near London Airport"
+   - If user asks "how far are they" → directions from last location to last search results
+
+3. GEOGRAPHIC INTELLIGENCE:
+   - "Paris Central" = Paris, France (NOT Maine, USA)
+   - "London Airport" = London, UK (NOT random "Find" businesses)
+   - Always validate search results make geographic sense
+
+4. CONTEXT USAGE:
+   - Use lastSearchType to determine what to search for
+   - Use lastLocation for "near me" or "there" references
+   - Use lastSearchResults for "they", "them" references
 
 IMPORTANT FOR DIRECTIONS/MATRIX ROUTING:
 - For directions queries like "directions from A to B", set search_query to "from A to B"
@@ -599,6 +680,10 @@ DIRECTIONS QUERY EXAMPLES:
 - "from X to Y" → directions intent
 - "get from X to Y" → directions intent
 - "route from X to Y" → directions intent
+- "how far is X from Y" → directions intent
+- "distance between X and Y" → directions intent
+
+CRITICAL: "travel time between Paris and Amsterdam" MUST be classified as directions intent, NOT search_places!
 
 MATRIX ROUTING QUERY EXAMPLES:
 - "matrix routing between X and Y" → matrix_routing intent
@@ -1179,16 +1264,26 @@ async function processDirectionsSequential(searchQuery, userContext) {
     console.log('🔄 Processing directions sequentially:', searchQuery);
     
     // Step 1: Extract addresses using regex (deterministic)
-    const routeMatch = searchQuery.match(/from\s+(.+?)\s+to\s+(.+)/i);
-    if (!routeMatch) {
-      return {
-        success: false,
-        response: `I need more specific information for directions. Please provide addresses like "directions from [origin] to [destination]".`
-      };
-    }
+    let routeMatch = searchQuery.match(/from\s+(.+?)\s+to\s+(.+)/i);
+    let originAddress, destinationAddress;
     
-    let originAddress = routeMatch[1].trim();
-    let destinationAddress = routeMatch[2].trim();
+    if (routeMatch) {
+      // Pattern: "from X to Y"
+      originAddress = routeMatch[1].trim();
+      destinationAddress = routeMatch[2].trim();
+    } else {
+      // Try pattern: "between X and Y" or "travel time between X and Y"
+      routeMatch = searchQuery.match(/between\s+(.+?)\s+and\s+(.+)/i);
+      if (routeMatch) {
+        originAddress = routeMatch[1].trim();
+        destinationAddress = routeMatch[2].trim();
+      } else {
+        return {
+          success: false,
+          response: `I need more specific information for directions. Please provide addresses like "directions from [origin] to [destination]" or "travel time between [origin] and [destination]".`
+        };
+      }
+    }
     
     // Handle context references
     if (destinationAddress.toLowerCase().includes('there') || destinationAddress.toLowerCase().includes('[current location]')) {
@@ -1646,6 +1741,12 @@ async function handleOrchestratorChat(rpcRequest, res) {
     const userContext = getUserContext(user_id);
     const conversationContext = getConversationContext(user_id);
     
+    // Check for conversational references first
+    const contextRef = resolveConversationalReference(message, userContext);
+    if (contextRef.shouldUseContext) {
+      console.log('🔄 Detected conversational reference:', contextRef);
+    }
+    
     // Store user message
     userContext.conversationHistory.push({
       timestamp: new Date().toISOString(),
@@ -1661,7 +1762,7 @@ async function handleOrchestratorChat(rpcRequest, res) {
     });
     
     // Use LLM-based context extraction and intent understanding
-    const contextAnalysis = await extractContextAndIntent(message, userContext, conversationContext);
+    const contextAnalysis = await extractContextAndIntent(message, userContext, conversationContext, contextRef);
     
     // Debug: Log the LLM analysis
     console.log('=== LLM ANALYSIS RESULT ===');
@@ -1722,6 +1823,23 @@ async function handleOrchestratorChat(rpcRequest, res) {
           // Update context with any new location information from Maps Agent
           if (mapsResult.updated_context) {
             updateUserContext(user_id, mapsResult.updated_context);
+          }
+          // Store search results for conversational references
+          if (contextAnalysis.intent === 'search_places') {
+            // Extract search type from the search query
+            let searchType = 'places';
+            if (contextAnalysis.search_query) {
+              if (contextAnalysis.search_query.toLowerCase().includes('restaurant')) searchType = 'restaurants';
+              else if (contextAnalysis.search_query.toLowerCase().includes('coffee')) searchType = 'coffee shops';
+              else if (contextAnalysis.search_query.toLowerCase().includes('hotel')) searchType = 'hotels';
+              else if (contextAnalysis.search_query.toLowerCase().includes('gas')) searchType = 'gas stations';
+            }
+            
+            updateUserContext(user_id, {
+              lastSearchType: searchType,
+              lastSearchResults: response,
+              lastSearchLocation: contextAnalysis.location_context.address || contextAnalysis.search_query
+            });
           }
         } else {
           response = mapsResult?.error || "I'm having trouble connecting to the Maps service right now. Please try again later.";
