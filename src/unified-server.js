@@ -2061,6 +2061,17 @@ async function executeSingleTool(intent, location_context, search_query, user_co
               }
             } catch (error) {
               console.error('Search tool error:', error);
+              console.error('Search error details:', {
+                message: error.message,
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                config: {
+                  url: error.config?.url,
+                  method: error.config?.method,
+                  headers: error.config?.headers
+                }
+              });
               response = `I'm having trouble searching for places right now. Please try again later.`;
             }
             break;
