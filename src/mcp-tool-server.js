@@ -295,6 +295,10 @@ class MCPToolServer {
   async searchPlaces(input) {
     const { query, lat, lon, radius = 5000, limit = 10 } = input;
     
+    console.log('🔍 MCP searchPlaces called with:', { query, lat, lon, radius, limit });
+    console.log('🔑 TomTom API Key available:', !!this.tomtomApiKey);
+    console.log('🔑 TomTom API Key length:', this.tomtomApiKey?.length);
+    
     try {
       // Use the same Search API that works locally
       const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json`;
@@ -305,29 +309,45 @@ class MCPToolServer {
         geobias: `point:${lat},${lon}` // Use geobias instead of lat/lon/radius
       };
 
-      console.log('MCP Search URL:', url);
-      console.log('MCP Search params:', params);
+      console.log('🌐 MCP Search URL:', url);
+      console.log('📋 MCP Search params:', params);
       
       const response = await axios.get(url, { params });
       
+      console.log('✅ MCP Search response status:', response.status);
+      console.log('📊 MCP Search response data keys:', Object.keys(response.data || {}));
+      console.log('🔢 MCP Search results count:', response.data?.results?.length || 0);
+      
       if (response.data && response.data.results) {
-        return {
-          places: response.data.results.map(place => ({
-            name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
-            address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
-            rating: place.poi?.rating || 0,
-            distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
-            coordinates: {
-              lat: place.position?.lat || lat,
-              lon: place.position?.lon || lon
-            }
-          }))
-        };
+        const places = response.data.results.map(place => ({
+          name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
+          address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
+          rating: place.poi?.rating || 0,
+          distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
+          coordinates: {
+            lat: place.position?.lat || lat,
+            lon: place.position?.lon || lon
+          }
+        }));
+        
+        console.log('🎯 MCP Search returning places:', places.length);
+        return { places };
       }
 
+      console.log('⚠️ MCP Search no results found');
       return { places: [] };
     } catch (error) {
-      console.error('MCP Search error:', error.response?.data || error.message);
+      console.error('❌ MCP Search error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          headers: error.config?.headers
+        }
+      });
       throw new Error(`Search failed: ${error.response?.data?.detailedError?.message || error.message}`);
     }
   }
