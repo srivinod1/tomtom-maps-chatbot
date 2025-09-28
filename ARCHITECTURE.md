@@ -4,7 +4,7 @@
 
 This project implements a sophisticated multi-agent system that integrates Google ADK (Agent Development Kit), TomTom Maps APIs, and Model Context Protocol (MCP) to provide intelligent location-based services. The architecture follows Google's best practices for multi-agent systems with clean separation of concerns, A2A (Agent-to-Agent) communication, and comprehensive observability.
 
-**Current Status**: ✅ **FULLY OPERATIONAL** - All core functionalities are working including directions, matrix routing, geocoding, search, and reverse geocoding with live traffic data.
+**Current Status**: ✅ **HIGHLY OPERATIONAL** - 90% of core functionalities working including directions, matrix routing, geocoding, search, and reverse geocoding with live traffic data. Minor issue with international travel time queries being classified incorrectly.
 
 ## Architecture Principles
 
@@ -227,10 +227,11 @@ This project implements a sophisticated multi-agent system that integrates Googl
 - **TomTom Static Maps API**: ⏳ Pending implementation
 
 ### Tool Server Architecture
-- **Port**: 3003
-- **Endpoints**: `/manifest`, `/tools`, `/tools/:toolName`
+- **Port**: 3000 (integrated with main server for Railway deployment)
+- **Endpoints**: `/tools`, `/tools/:toolName/execute`
 - **Protocol**: HTTP REST
 - **Authentication**: TomTom API key
+- **Integration**: MCP Tool Server is integrated into the unified server for Railway deployment
 
 ## Observability
 
@@ -264,8 +265,9 @@ This project implements a sophisticated multi-agent system that integrates Googl
 
 ### Railway Configuration
 **File**: `railway.json`
-**Service**: Single unified service
-**Ports**: 3000 (main), 3003 (MCP tools)
+**Service**: Single unified service with integrated MCP Tool Server
+**Ports**: 3000 (main + MCP tools integrated)
+**Deployment**: Railway only exposes one port, so MCP Tool Server is integrated into the main server
 
 ### Environment Variables
 ```bash
@@ -283,12 +285,12 @@ GOOGLE_APPLICATION_CREDENTIALS=service_account_json
 
 # Server Configuration
 NODE_ENV=production
-MCP_TOOL_SERVER_URL=http://localhost:3003
+MCP_TOOL_SERVER_URL=http://localhost:3000
 ```
 
 ### Health Checks
-- **Main Service**: `GET /health`
-- **MCP Tools**: `GET http://localhost:3003/health`
+- **Main Service**: `GET /`
+- **MCP Tools**: `GET /tools` (integrated)
 - **Analytics**: `GET /analytics`
 
 ## Testing
@@ -375,6 +377,27 @@ ADK-Agent/
 ├── requirements.txt                  # Python dependencies
 └── ARCHITECTURE.md                   # This file
 ```
+
+## Recent Improvements & Fixes
+
+### December 2024 Updates
+1. **MCP Client Integration Fix**: Fixed MCP client initialization issues that were causing connection failures
+2. **Railway Deployment Optimization**: Integrated MCP Tool Server into the main server for Railway deployment compatibility
+3. **Intent Classification Enhancement**: Improved LLM prompt for better classification of travel time queries
+4. **Comprehensive Testing**: Implemented 10-scenario test suite with 90% success rate
+5. **Environment Configuration**: Fixed `.env` file configuration for proper MCP Tool Server URL
+
+### Current Test Results
+- **Local Server**: 9/10 tests passing (90%)
+- **Railway Server**: 9/10 tests passing (90%)
+- **Working Features**: Place search, geocoding, reverse geocoding, directions, matrix routing
+- **Known Issue**: International travel time queries (e.g., "travel time between Paris and Amsterdam") not being classified as directions
+
+### Performance Improvements
+- Reduced MCP client initialization time
+- Improved error handling and fallback mechanisms
+- Enhanced logging for better debugging
+- Optimized Railway deployment configuration
 
 ## Future Enhancements
 

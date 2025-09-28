@@ -73,7 +73,25 @@ const mapsA2A = new A2AProtocol('maps-agent', 'maps', `http://localhost:${PORT}`
 // Initialize MCP client for tool access
 // For Railway deployment, MCP tools are integrated into the same server
 const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || `http://localhost:${PORT}`;
+console.log('🔧 MCP_TOOL_SERVER_URL set to:', MCP_TOOL_SERVER_URL);
 const mcpClient = new MCPClient(MCP_TOOL_SERVER_URL);
+
+// Override the MCP client's callTool method to use the integrated endpoints
+mcpClient.callTool = async function(toolName, input) {
+  try {
+    // Use the integrated tool execution endpoint
+    const response = await axios.post(`${MCP_TOOL_SERVER_URL}/tools/${encodeURIComponent(toolName)}/execute`, input);
+    
+    if (response.data.success) {
+      return response.data.result;
+    } else {
+      throw new Error(response.data.error || 'Tool execution failed');
+    }
+  } catch (error) {
+    console.error(`Tool call failed for ${toolName}:`, error.message);
+    throw error;
+  }
+};
 
 // Import MCP tool server for direct tool execution
 const MCPToolServer = require('./mcp-tool-server.js');
@@ -81,11 +99,104 @@ const MCPToolServer = require('./mcp-tool-server.js');
 // Initialize MCP client and discover tools
 async function initializeMCPClient() {
   try {
-    await mcpClient.discoverTools();
+    // Wait a bit for the server to be fully ready
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    console.log('🔍 Testing MCP Tool Server connection...');
+    console.log('🔍 MCP_TOOL_SERVER_URL:', MCP_TOOL_SERVER_URL);
+    
+    // Test the tools endpoint first
+    const toolsResponse = await axios.get(`${MCP_TOOL_SERVER_URL}/tools`, {
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    console.log('🔍 Tools endpoint response status:', toolsResponse.status);
+    console.log('🔍 Tools endpoint response data length:', toolsResponse.data?.length || 0);
+    
+    // Initialize tools directly instead of using MCP client
+    mcpClient.tools = toolsResponse.data;
     console.log('🔧 MCP Client initialized with tools:', mcpClient.getAvailableTools());
+    console.log('🔧 Available tool names:', mcpClient.tools.map(t => t.name));
   } catch (error) {
-    console.warn('⚠️  MCP Client initialization failed:', error.message);
+    console.warn('⚠️  MCP Client initialization failed');
+    console.log('   Error message:', error.message);
+    console.log('   Error code:', error.code);
+    console.log('   Error response status:', error.response?.status);
+    console.log('   Error response data:', error.response?.data);
     console.log('   MCP Tool Server not available - using fallback methods');
+    
+    // Initialize with tools directly from the integrated server as fallback
+    mcpClient.tools = [
+      {
+        name: 'search',
+        description: 'Search for places using TomTom API',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+            lat: { type: 'number', description: 'Latitude' },
+            lon: { type: 'number', description: 'Longitude' },
+            radius: { type: 'number', description: 'Search radius in meters', default: 5000 },
+            limit: { type: 'number', description: 'Maximum number of results', default: 10 }
+          },
+          required: ['query', 'lat', 'lon']
+        }
+      },
+      {
+        name: 'geocode',
+        description: 'Convert address to coordinates',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            address: { type: 'string', description: 'Address to geocode' },
+            limit: { type: 'number', description: 'Maximum number of results', default: 1 }
+          },
+          required: ['address']
+        }
+      },
+      {
+        name: 'reverse-geocode',
+        description: 'Convert coordinates to address',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            lat: { type: 'number', description: 'Latitude' },
+            lon: { type: 'number', description: 'Longitude' }
+          },
+          required: ['lat', 'lon']
+        }
+      },
+      {
+        name: 'directions',
+        description: 'Get directions between two points',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            from: { type: 'string', description: 'Starting address or coordinates' },
+            to: { type: 'string', description: 'Destination address or coordinates' },
+            travelMode: { type: 'string', description: 'Travel mode', default: 'car' }
+          },
+          required: ['from', 'to']
+        }
+      },
+      {
+        name: 'static-map',
+        description: 'Generate static map image',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            center: { type: 'string', description: 'Center coordinates' },
+            zoom: { type: 'number', description: 'Zoom level', default: 10 },
+            width: { type: 'number', description: 'Image width', default: 400 },
+            height: { type: 'number', description: 'Image height', default: 300 }
+          },
+          required: ['center']
+        }
+      }
+    ];
+    console.log('🔧 MCP Client initialized with fallback tools:', mcpClient.getAvailableTools());
     // In Railway, we'll use direct TomTom API calls as fallback
   }
 }
@@ -483,10 +594,18 @@ DIRECTIONS QUERY EXAMPLES:
 - "directions from X to Y" → directions intent
 - "how do I get from X to Y" → directions intent
 - "travel time from X to Y" → directions intent
+- "travel time between X and Y" → directions intent
 - "how long to get from X to Y" → directions intent
 - "from X to Y" → directions intent
 - "get from X to Y" → directions intent
 - "route from X to Y" → directions intent
+
+MATRIX ROUTING QUERY EXAMPLES:
+- "matrix routing between X and Y" → matrix_routing intent
+- "travel times between X, Y, and Z" → matrix_routing intent
+- "matrix routing from X, Y to A, B" → matrix_routing intent
+- "travel time matrix between X and Y" → matrix_routing intent
+- "compare travel times between X, Y, and Z" → matrix_routing intent
 
 IMPORTANT: Be precise in detecting location-based queries. Only classify as location query if it clearly involves maps, places, directions, or geocoding. Weather, general knowledge, and conversation queries should go to General AI Agent.
 
