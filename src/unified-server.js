@@ -1192,7 +1192,16 @@ function extractLocationsFromQuery(searchQuery) {
   // Try "between A, B, C" pattern
   const betweenMatch = searchQuery.match(/between\s+(.+)/i);
   if (betweenMatch) {
-    const locationList = betweenMatch[1].split(',').map(addr => addr.trim());
+    let locationList = betweenMatch[1].split(',').map(addr => addr.trim());
+    
+    // If no commas found, try splitting by "and"
+    if (locationList.length === 1 && locationList[0].includes(' and ')) {
+      locationList = locationList[0].split(/\s+and\s+/i).map(addr => addr.trim());
+    }
+    
+    // Clean up any remaining "and" prefixes
+    locationList = locationList.map(addr => addr.replace(/^and\s+/i, '').trim());
+    
     locations.push(...locationList);
     console.log(`📍 Between pattern found: ${locationList}`);
     return locations;
@@ -1269,6 +1278,7 @@ async function calculateMatrixRouting(locations) {
       origins: origins,
       destinations: destinations,
       options: {
+        departAt: 'now', // Required field - use current time
         travelMode: 'car',
         traffic: 'live', // Use live traffic for better accuracy
         routeType: 'fastest'
@@ -1276,7 +1286,7 @@ async function calculateMatrixRouting(locations) {
     };
 
     console.log('Matrix routing URL:', matrixUrl);
-    console.log('Matrix routing request body:', requestBody);
+    console.log('Matrix routing request body:', JSON.stringify(requestBody, null, 2));
     const response = await axios.post(matrixUrl, requestBody, {
       headers: {
         'Content-Type': 'application/json'
@@ -1330,6 +1340,8 @@ async function calculateMatrixRouting(locations) {
     return { matrix: [] };
   } catch (error) {
     console.error('Error calculating matrix routing:', error);
+    console.error('Error response:', error.response?.data);
+    console.error('Error status:', error.response?.status);
     throw error;
   }
 }
