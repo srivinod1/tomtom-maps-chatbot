@@ -48,6 +48,17 @@ const mapsA2A = new A2AProtocol('maps-agent', 'maps', `http://localhost:${PORT}`
 const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || 'http://localhost:3003';
 const mcpClient = new MCPClient(MCP_TOOL_SERVER_URL);
 
+// Initialize MCP client and discover tools
+async function initializeMCPClient() {
+  try {
+    await mcpClient.discoverTools();
+    console.log('🔧 MCP Client initialized with tools:', mcpClient.getAvailableTools());
+  } catch (error) {
+    console.warn('⚠️  MCP Client initialization failed:', error.message);
+    console.log('   Make sure MCP Tool Server is running on', MCP_TOOL_SERVER_URL);
+  }
+}
+
 // Register agents for internal communication
 orchestratorA2A.registerAgent('maps-agent', 'maps', `http://localhost:${PORT}`);
 mapsA2A.registerAgent('orchestrator-agent', 'orchestrator', `http://localhost:${PORT}`);
@@ -1525,6 +1536,9 @@ app.listen(PORT, async () => {
   console.log(`🤝 A2A Endpoint: http://localhost:${PORT}/a2a`);
   console.log(`🗺️  Maps MCP Endpoint: http://localhost:${PORT}/maps`);
   console.log(`🌐 Health Check: http://localhost:${PORT}/`);
+  
+  // Initialize MCP client
+  await initializeMCPClient();
   
   // Log system startup event
   if (observability) {
