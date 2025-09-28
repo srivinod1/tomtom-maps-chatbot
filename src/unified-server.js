@@ -1199,8 +1199,10 @@ function extractLocationsFromQuery(searchQuery) {
       locationList = locationList[0].split(/\s+and\s+/i).map(addr => addr.trim());
     }
     
-    // Clean up any remaining "and" prefixes
-    locationList = locationList.map(addr => addr.replace(/^and\s+/i, '').trim());
+    // Clean up any remaining "and" prefixes and empty strings
+    locationList = locationList
+      .map(addr => addr.replace(/^and\s+/i, '').trim())
+      .filter(addr => addr.length > 0);
     
     locations.push(...locationList);
     console.log(`📍 Between pattern found: ${locationList}`);
