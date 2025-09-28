@@ -336,9 +336,8 @@ Respond with a JSON object in this exact format:
       console.log('Using Anthropic for context extraction');
       llmResponse = await callAnthropic(contextPrompt, '', userContext.userId || 'default');
     } else {
-      console.log('No LLM API keys available, using fallback pattern matching');
-      // Fallback to simple pattern matching if no LLM available
-      return fallbackContextExtraction(message, userContext);
+      console.log('No LLM API keys available - this should not happen in production');
+      throw new Error('No LLM API keys configured - cannot process request');
     }
 
     // Parse LLM response
@@ -350,145 +349,11 @@ Respond with a JSON object in this exact format:
       throw new Error('No valid JSON found in LLM response');
     }
   } catch (error) {
-    console.warn('LLM context extraction failed, using fallback:', error.message);
-    return fallbackContextExtraction(message, userContext);
+    console.error('LLM context extraction failed:', error.message);
+    throw new Error(`LLM context extraction failed: ${error.message}`);
   }
 }
 
-// Fallback context extraction for when LLM is not available
-function fallbackContextExtraction(message, userContext) {
-  // Look for directions patterns
-  const directionsPatterns = [
-    /(?:how\s+(?:do\s+)?i\s+(?:get|travel|go)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
-    /(?:directions?\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
-    /(?:route\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
-    /(?:how\s+(?:long\s+)?does\s+it\s+(?:take\s+)?(?:for\s+me\s+)?to\s+travel\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
-    /(?:travel\s+time\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i
-  ];
-  
-  for (const pattern of directionsPatterns) {
-    const match = message.match(pattern);
-    if (match) {
-      return {
-        intent: 'directions',
-        location_context: {
-          source: 'addresses',
-          from_address: match[1].trim(),
-          to_address: match[2].trim(),
-          coordinates: null
-        },
-        search_query: `directions from ${match[1].trim()} to ${match[2].trim()}`,
-        tool_needed: 'directions',
-        confidence: 0.9
-      };
-    }
-  }
-  
-  // Look for geocoding patterns
-  const geocodingPatterns = [
-    /(?:what\s+are\s+the\s+)?coordinates?\s+for\s+(.+?)(?:\?|\s*$)/i,
-    /(?:find\s+)?coordinates?\s+of\s+(.+?)(?:\?|\s*$)/i,
-    /(?:where\s+is\s+)?(.+?)(?:\s+located)?(?:\s+coordinates?)?(?:\?|\s*$)/i
-  ];
-  
-  for (const pattern of geocodingPatterns) {
-    const match = message.match(pattern);
-    if (match) {
-      return {
-        intent: 'geocoding',
-        location_context: {
-          source: 'address',
-          coordinates: null,
-          address: match[1].trim()
-        },
-        search_query: `coordinates for ${match[1].trim()}`,
-        tool_needed: 'geocoding',
-        confidence: 0.8
-      };
-    }
-  }
-  
-  // Look for search patterns
-  const searchPatterns = [
-    /(?:find|search\s+for|look\s+for)\s+(.+?)(?:\s+near\s+(.+?))?(?:\?|\s*$)/i,
-    /(?:show\s+me\s+)?(.+?)(?:\s+near\s+(.+?))?(?:\?|\s*$)/i
-  ];
-  
-  for (const pattern of searchPatterns) {
-    const match = message.match(pattern);
-    if (match) {
-      const searchQuery = match[1].trim();
-      const nearLocation = match[2] ? match[2].trim() : null;
-      
-      return {
-        intent: 'search_places',
-        location_context: {
-          source: nearLocation ? 'address' : 'none',
-          coordinates: null,
-          address: nearLocation
-        },
-        search_query: searchQuery,
-        tool_needed: 'search_places',
-        confidence: 0.8
-      };
-    }
-  }
-  
-  // Look for coordinates pattern
-  const coordPattern = /(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/;
-  const coordMatch = message.match(coordPattern);
-  if (coordMatch) {
-    return {
-      intent: 'search_places',
-      location_context: {
-        source: 'coordinates',
-        coordinates: { lat: parseFloat(coordMatch[1]), lon: parseFloat(coordMatch[2]) },
-        address: null
-      },
-      search_query: 'places',
-      tool_needed: 'search_places',
-      confidence: 0.8
-    };
-  }
-  
-  // Look for address patterns
-  const addressPattern = /(\d+\s+[A-Za-z\s]+(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Place|Pl|Court|Ct|Circle|Cir|Parkway|Pkwy|Highway|Hwy|Freeway|Fwy|Laan|Straat|Weg|Plein|Square|Plaza))/i;
-  const addressMatch = message.match(addressPattern);
-  if (addressMatch) {
-    return {
-      intent: 'search_places',
-      location_context: {
-        source: 'address',
-        coordinates: null,
-        address: addressMatch[1]
-      },
-      search_query: 'places',
-      tool_needed: 'search_places',
-      confidence: 0.7
-    };
-  }
-  
-  // Use context references
-  const referencePattern = /(?:that|this|the)\s+(?:address|location|place)/i;
-  if (referencePattern.test(message) && userContext.lastLocation) {
-    return {
-      intent: 'search_places',
-      location_context: userContext.lastLocation,
-      search_query: 'places',
-      tool_needed: 'search_places',
-      confidence: 0.6
-    };
-  }
-  
-  // Default to general chat
-  return {
-    intent: 'general_chat',
-    location_context: { source: 'none', coordinates: null, address: null },
-    search_query: null,
-    tool_needed: 'none',
-    confidence: 0.5
-  };
-}
 
 // LLM Integration with Observability
 async function callOpenAI(message, context = '', userId = 'anonymous') {
@@ -1036,14 +901,7 @@ async function handleOrchestratorChat(rpcRequest, res) {
         }
       } catch (error) {
         console.error('LLM error:', error.message);
-        // Fallback to simple responses
-        if (message.toLowerCase().includes('hello') || message.toLowerCase().includes('hi')) {
-          response = 'Hello! I\'m your multi-agent assistant. I can help you with location searches, directions, geocoding, and general questions. What would you like to know?';
-        } else if (message.toLowerCase().includes('help')) {
-          response = 'I can help you with:\n- Location searches using TomTom Maps\n- Getting directions between places\n- Finding coordinates for addresses\n- General questions and conversation\n\nWhat would you like to do?';
-        } else {
-          response = `I understand you're asking: "${message}". I can help with location-based queries using TomTom Maps or answer general questions. Could you be more specific about what you need?`;
-        }
+        throw new Error(`LLM processing failed: ${error.message}`);
       }
     }
     
