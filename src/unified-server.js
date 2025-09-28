@@ -324,6 +324,83 @@ Respond with a JSON object in this exact format:
 
 // Fallback context extraction for when LLM is not available
 function fallbackContextExtraction(message, userContext) {
+  // Look for directions patterns
+  const directionsPatterns = [
+    /(?:how\s+(?:do\s+)?i\s+(?:get|travel|go)\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
+    /(?:directions?\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
+    /(?:route\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
+    /(?:how\s+(?:long\s+)?does\s+it\s+(?:take\s+)?(?:for\s+me\s+)?to\s+travel\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i,
+    /(?:travel\s+time\s+from\s+(.+?)\s+to\s+(.+?)(?:\s+now)?\s*$/i
+  ];
+  
+  for (const pattern of directionsPatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      return {
+        intent: 'directions',
+        location_context: {
+          source: 'addresses',
+          from_address: match[1].trim(),
+          to_address: match[2].trim(),
+          coordinates: null
+        },
+        search_query: `directions from ${match[1].trim()} to ${match[2].trim()}`,
+        tool_needed: 'directions',
+        confidence: 0.9
+      };
+    }
+  }
+  
+  // Look for geocoding patterns
+  const geocodingPatterns = [
+    /(?:what\s+are\s+the\s+)?coordinates?\s+for\s+(.+?)(?:\?|\s*$)/i,
+    /(?:find\s+)?coordinates?\s+of\s+(.+?)(?:\?|\s*$)/i,
+    /(?:where\s+is\s+)?(.+?)(?:\s+located)?(?:\s+coordinates?)?(?:\?|\s*$)/i
+  ];
+  
+  for (const pattern of geocodingPatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      return {
+        intent: 'geocoding',
+        location_context: {
+          source: 'address',
+          coordinates: null,
+          address: match[1].trim()
+        },
+        search_query: `coordinates for ${match[1].trim()}`,
+        tool_needed: 'geocoding',
+        confidence: 0.8
+      };
+    }
+  }
+  
+  // Look for search patterns
+  const searchPatterns = [
+    /(?:find|search\s+for|look\s+for)\s+(.+?)(?:\s+near\s+(.+?))?(?:\?|\s*$)/i,
+    /(?:show\s+me\s+)?(.+?)(?:\s+near\s+(.+?))?(?:\?|\s*$)/i
+  ];
+  
+  for (const pattern of searchPatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      const searchQuery = match[1].trim();
+      const nearLocation = match[2] ? match[2].trim() : null;
+      
+      return {
+        intent: 'search_places',
+        location_context: {
+          source: nearLocation ? 'address' : 'none',
+          coordinates: null,
+          address: nearLocation
+        },
+        search_query: searchQuery,
+        tool_needed: 'search_places',
+        confidence: 0.8
+      };
+    }
+  }
+  
   // Look for coordinates pattern
   const coordPattern = /(-?\d+\.?\d*),\s*(-?\d+\.?\d*)/;
   const coordMatch = message.match(coordPattern);
