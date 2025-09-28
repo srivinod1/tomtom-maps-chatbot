@@ -633,7 +633,7 @@ async function callMapsAgent(messageType, payload, userId = 'anonymous') {
 }
 
 // TomTom API Functions with Observability
-async function searchLocationsOrbis(query, location, radius = 5000) {
+async function searchLocationsOrbis(query, location, radius = 5000, geobias = null) {
   const startTime = Date.now();
   const correlationId = `tomtom-search-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   
@@ -641,7 +641,7 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
     component: 'tomtomApi',
     endpoint: 'search',
     method: 'GET',
-    params: { query, location, radius },
+    params: { query, location, radius, geobias },
     correlationId: correlationId,
     success: false,
     response: null,
@@ -653,23 +653,30 @@ async function searchLocationsOrbis(query, location, radius = 5000) {
   try {
     const params = {
       key: TOMTOM_API_KEY,
-      apiVersion: 1,
-      lat: location.lat,
-      lon: location.lon,
-      radius: radius,
-      query: query
+      limit: 10
     };
 
-    const response = await axios.get(TOMTOM_ORBIS_SEARCH_URL, { params });
+    // Add geobias if provided
+    if (geobias) {
+      params.geobias = geobias;
+      console.log('🌍 Using geobias in search:', geobias);
+    }
+
+    // Use regular Search API with geobias support instead of Orbis
+    const url = `${TOMTOM_SEARCH_URL}/${encodeURIComponent(query)}.json?${new URLSearchParams(params)}`;
+    
+    console.log('🔍 Search URL:', url);
+    const response = await axios.get(url);
     
     let result;
     if (response.data && response.data.results) {
       result = {
         places: response.data.results.map(place => ({
-          name: place.poi?.name || 'Unknown',
-          formatted_address: place.address?.freeformAddress || 'Address not available',
+          name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
+          formatted_address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
+          address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
           rating: place.poi?.rating || 0,
-          distance: place.distance ? (place.distance / 1000).toFixed(2) : null,
+          distance: place.dist ? (place.dist / 1000).toFixed(2) : null,
           position: place.position,
           categories: place.poi?.categories || []
         }))
@@ -1955,9 +1962,18 @@ async function executeSingleTool(intent, location_context, search_query, user_co
       }
       
       if (!searchLocation) {
-        // Fallback to default location
-        searchLocation = { lat: 47.6062, lon: -122.3321 };
-        console.log('Using default search location:', searchLocation);
+        // Determine geobias for search instead of using hardcoded location
+        const searchGeobias = await determineGeobiasWithLLM(search_query || 'places', user_context);
+        if (searchGeobias) {
+          // Extract coordinates from geobias string (point:lat,lon)
+          const coords = searchGeobias.replace('point:', '').split(',');
+          searchLocation = { lat: parseFloat(coords[0]), lon: parseFloat(coords[1]) };
+          console.log('Using geobias-based search location:', searchLocation);
+        } else {
+          // Fallback to default location only if no geobias available
+          searchLocation = { lat: 47.6062, lon: -122.3321 };
+          console.log('Using default search location:', searchLocation);
+        }
       }
     }
     
@@ -1978,7 +1994,9 @@ async function executeSingleTool(intent, location_context, search_query, user_co
                 });
               } catch (mcpError) {
                 console.log('MCP tool not available, using direct API call');
-                searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation);
+                // Determine geobias for search
+                const searchGeobias = await determineGeobiasWithLLM(search_query || 'places', user_context);
+                searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation, 5000, searchGeobias);
               }
               
               if (searchResult && searchResult.places && searchResult.places.length > 0) {
@@ -2126,7 +2144,14 @@ orchestratorA2A.processA2AMessage = async function(a2aMessage) {
         if (isLocationQuery) {
           // Route to Maps Agent via A2A
           const searchQuery = payload.message.replace(/find|search|near|me|restaurant|restaurants|closest|to this place|along with distances/gi, '').trim() || 'restaurants';
-          const searchLocation = { lat: 47.6062, lon: -122.3321 }; // Default location
+          // Determine geobias for search instead of using hardcoded location
+          const searchGeobias = await determineGeobiasWithLLM(searchQuery, user_context);
+          let searchLocation = { lat: 47.6062, lon: -122.3321 }; // Default fallback
+          if (searchGeobias) {
+            const coords = searchGeobias.replace('point:', '').split(',');
+            searchLocation = { lat: parseFloat(coords[0]), lon: parseFloat(coords[1]) };
+            console.log('Using geobias-based search location for A2A:', searchLocation);
+          }
           
           const searchResult = await callMapsAgent('search_places', {
             query: searchQuery,
