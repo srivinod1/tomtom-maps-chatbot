@@ -71,7 +71,8 @@ const orchestratorA2A = new A2AProtocol('orchestrator-agent', 'orchestrator', `h
 const mapsA2A = new A2AProtocol('maps-agent', 'maps', `http://localhost:${PORT}`);
 
 // Initialize MCP client for tool access
-const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || 'http://localhost:3003';
+// For Railway deployment, MCP tools are integrated into the same server
+const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || `http://localhost:${PORT}`;
 const mcpClient = new MCPClient(MCP_TOOL_SERVER_URL);
 
 // Import MCP tool server for direct tool execution
@@ -116,7 +117,111 @@ app.get('/', (req, res) => {
   });
 });
 
-// MCP Tool Server endpoints are now handled by the separate MCP Tool Server on port 3003
+// MCP Tool Server endpoints (integrated for Railway deployment)
+app.get('/tools', (req, res) => {
+  res.json([
+    {
+      name: 'search',
+      description: 'Search for places using TomTom API',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search query' },
+          lat: { type: 'number', description: 'Latitude' },
+          lon: { type: 'number', description: 'Longitude' },
+          radius: { type: 'number', description: 'Search radius in meters', default: 5000 },
+          limit: { type: 'number', description: 'Maximum number of results', default: 10 }
+        },
+        required: ['query', 'lat', 'lon']
+      }
+    },
+    {
+      name: 'geocode',
+      description: 'Convert address to coordinates',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          address: { type: 'string', description: 'Address to geocode' },
+          limit: { type: 'number', description: 'Maximum number of results', default: 1 }
+        },
+        required: ['address']
+      }
+    },
+    {
+      name: 'reverse-geocode',
+      description: 'Convert coordinates to address',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          lat: { type: 'number', description: 'Latitude' },
+          lon: { type: 'number', description: 'Longitude' }
+        },
+        required: ['lat', 'lon']
+      }
+    },
+    {
+      name: 'directions',
+      description: 'Get directions between two points',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          from: { type: 'string', description: 'Starting address or coordinates' },
+          to: { type: 'string', description: 'Destination address or coordinates' },
+          travelMode: { type: 'string', description: 'Travel mode', default: 'car' }
+        },
+        required: ['from', 'to']
+      }
+    },
+    {
+      name: 'static-map',
+      description: 'Generate static map image',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          center: { type: 'string', description: 'Center coordinates' },
+          zoom: { type: 'number', description: 'Zoom level', default: 10 },
+          width: { type: 'number', description: 'Image width', default: 400 },
+          height: { type: 'number', description: 'Image height', default: 300 }
+        },
+        required: ['center']
+      }
+    }
+  ]);
+});
+
+// MCP Tool execution endpoint
+app.post('/tools/:toolName/execute', async (req, res) => {
+  let { toolName } = req.params;
+  const input = req.body;
+  
+  // Map simple tool names to full MCP tool names
+  const toolNameMap = {
+    'search': 'mcp://tomtom/search',
+    'geocode': 'mcp://tomtom/geocode',
+    'reverse-geocode': 'mcp://tomtom/reverse-geocode',
+    'directions': 'mcp://tomtom/directions',
+    'static-map': 'mcp://tomtom/static-map'
+  };
+  
+  const fullToolName = toolNameMap[toolName] || toolName;
+  
+  try {
+    // Create MCP tool server instance for tool execution
+    const mcpToolServer = new MCPToolServer();
+    const result = await mcpToolServer.executeTool(fullToolName, input);
+    res.json({
+      success: true,
+      result: result
+    });
+  } catch (error) {
+    console.error(`Error executing tool ${toolName} (${fullToolName}):`, error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Tool execution failed', 
+      message: error.message 
+    });
+  }
+});
 
 // JSON-RPC endpoint for Orchestrator (Frontend Interface)
 app.post('/', async (req, res) => {
@@ -2038,7 +2143,7 @@ async function executeSingleTool(intent, location_context, search_query, user_co
           case 'search':
             try {
               // Use MCP tool directly
-              const searchResult = await mcpClient.callTool('mcp://tomtom/search', {
+              const searchResult = await mcpClient.callTool('search', {
                 query: search_query || 'places',
                 lat: searchLocation.lat,
                 lon: searchLocation.lon,
@@ -2083,7 +2188,7 @@ async function executeSingleTool(intent, location_context, search_query, user_co
         
           case 'reverse_geocode':
             try {
-              const reverseResult = await mcpClient.callTool('mcp://tomtom/reverse-geocode', {
+              const reverseResult = await mcpClient.callTool('reverse-geocode', {
                 lat: location_context.coordinates.lat,
                 lon: location_context.coordinates.lon
               });
