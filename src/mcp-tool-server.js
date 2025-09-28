@@ -295,36 +295,41 @@ class MCPToolServer {
   async searchPlaces(input) {
     const { query, lat, lon, radius = 5000, limit = 10 } = input;
     
-    // Use the same Search API that works locally instead of Orbis API
-    const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json`;
-    
-    const params = {
-      key: this.tomtomApiKey,
-      limit: limit,
-      geobias: `point:${lat},${lon}` // Use geobias instead of lat/lon/radius
-    };
-
-    console.log('MCP Search URL:', url);
-    console.log('MCP Search params:', params);
-    
-    const response = await axios.get(url, { params });
-    
-    if (response.data && response.data.results) {
-      return {
-        places: response.data.results.map(place => ({
-          name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
-          address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
-          rating: place.poi?.rating || 0,
-          distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
-          coordinates: {
-            lat: place.position?.lat || lat,
-            lon: place.position?.lon || lon
-          }
-        }))
+    try {
+      // Use the same Search API that works locally
+      const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json`;
+      
+      const params = {
+        key: this.tomtomApiKey,
+        limit: limit,
+        geobias: `point:${lat},${lon}` // Use geobias instead of lat/lon/radius
       };
-    }
 
-    return { places: [] };
+      console.log('MCP Search URL:', url);
+      console.log('MCP Search params:', params);
+      
+      const response = await axios.get(url, { params });
+      
+      if (response.data && response.data.results) {
+        return {
+          places: response.data.results.map(place => ({
+            name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
+            address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
+            rating: place.poi?.rating || 0,
+            distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
+            coordinates: {
+              lat: place.position?.lat || lat,
+              lon: place.position?.lon || lon
+            }
+          }))
+        };
+      }
+
+      return { places: [] };
+    } catch (error) {
+      console.error('MCP Search error:', error.response?.data || error.message);
+      throw new Error(`Search failed: ${error.response?.data?.detailedError?.message || error.message}`);
+    }
   }
 
   async geocodeAddress(input) {
