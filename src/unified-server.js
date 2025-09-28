@@ -9,6 +9,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const A2AProtocol = require('./a2a-protocol');
+const MCPClient = require('./mcp-client');
 const ComprehensiveObservability = require('./comprehensive-observability');
 require('dotenv').config();
 
@@ -42,6 +43,10 @@ const orchestratorA2A = new A2AProtocol('orchestrator-agent', 'orchestrator', `h
 
 // Initialize A2A Protocol for Maps Agent
 const mapsA2A = new A2AProtocol('maps-agent', 'maps', `http://localhost:${PORT}`);
+
+// Initialize MCP client for tool access
+const MCP_TOOL_SERVER_URL = process.env.MCP_TOOL_SERVER_URL || 'http://localhost:3003';
+const mcpClient = new MCPClient(MCP_TOOL_SERVER_URL);
 
 // Register agents for internal communication
 orchestratorA2A.registerAgent('maps-agent', 'maps', `http://localhost:${PORT}`);
@@ -1275,46 +1280,76 @@ async function processLocationRequest(payload) {
       searchLocation = { lat: 47.6062, lon: -122.3321 };
     }
     
-    // Execute the appropriate MCP tool based on intent
-    switch (tool_needed) {
-      case 'search_places':
-        const searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation);
-        if (searchResult && searchResult.places && searchResult.places.length > 0) {
-          response = `I found ${searchResult.places.length} places for "${search_query || 'places'}":\n\n`;
-          searchResult.places.slice(0, 3).forEach((place, index) => {
-            response += `${index + 1}. **${place.name}**\n`;
-            response += `   📍 ${place.formatted_address}\n`;
-            if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
-            if (place.distance) response += `   📏 ${place.distance} km away\n`;
-            response += '\n';
-          });
-        } else {
-          response = `I couldn't find any places for "${search_query || 'places'}" near the specified location.`;
-        }
-        break;
+        // Execute the appropriate MCP tool based on intent
+        switch (tool_needed) {
+          case 'search_places':
+            try {
+              const searchResult = await mcpClient.callTool('mcp://tomtom/search', {
+                query: search_query || 'places',
+                lat: searchLocation.lat,
+                lon: searchLocation.lon,
+                radius: 5000,
+                limit: 10
+              });
+              
+              if (searchResult && searchResult.places && searchResult.places.length > 0) {
+                response = `I found ${searchResult.places.length} places for "${search_query || 'places'}":\n\n`;
+                searchResult.places.slice(0, 3).forEach((place, index) => {
+                  response += `${index + 1}. **${place.name}**\n`;
+                  response += `   📍 ${place.address}\n`;
+                  if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
+                  if (place.distance) response += `   📏 ${place.distance} km away\n`;
+                  response += '\n';
+                });
+              } else {
+                response = `I couldn't find any places for "${search_query || 'places'}" near the specified location.`;
+              }
+            } catch (error) {
+              console.error('MCP search tool error:', error);
+              response = `I'm having trouble searching for places right now. Please try again later.`;
+            }
+            break;
         
-      case 'geocode_address':
-        const geocodeResult = await geocodeAddress(location_context.address);
-        if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
-          const coords = geocodeResult.results[0].position;
-          response = `The coordinates for "${geocodeResult.results[0].address.freeformAddress}" are approximately ${coords.lat.toFixed(6)}° N, ${coords.lon.toFixed(6)}° E.`;
-          updated_context = {
-            lastCoordinates: { lat: coords.lat, lon: coords.lon },
-            lastLocation: { source: 'address', address: geocodeResult.results[0].address.freeformAddress }
-          };
-        } else {
-          response = `I couldn't find coordinates for that address.`;
-        }
-        break;
+          case 'geocode_address':
+            try {
+              const geocodeResult = await mcpClient.callTool('mcp://tomtom/geocode', {
+                address: location_context.address,
+                limit: 1
+              });
+              
+              if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
+                const coords = geocodeResult.results[0].position;
+                response = `The coordinates for "${geocodeResult.results[0].address.freeformAddress}" are approximately ${coords.lat.toFixed(6)}° N, ${coords.lon.toFixed(6)}° E.`;
+                updated_context = {
+                  lastCoordinates: { lat: coords.lat, lon: coords.lon },
+                  lastLocation: { source: 'address', address: geocodeResult.results[0].address.freeformAddress }
+                };
+              } else {
+                response = `I couldn't find coordinates for that address.`;
+              }
+            } catch (error) {
+              console.error('MCP geocode tool error:', error);
+              response = `I'm having trouble geocoding that address. Please try again later.`;
+            }
+            break;
         
-      case 'reverse_geocode':
-        const reverseResult = await reverseGeocode(location_context.coordinates.lat, location_context.coordinates.lon);
-        if (reverseResult && reverseResult.addresses && reverseResult.addresses.length > 0) {
-          response = `The address for coordinates ${location_context.coordinates.lat}, ${location_context.coordinates.lon} is: ${reverseResult.addresses[0].address.freeformAddress}`;
-        } else {
-          response = `I couldn't find an address for those coordinates.`;
-        }
-        break;
+          case 'reverse_geocode':
+            try {
+              const reverseResult = await mcpClient.callTool('mcp://tomtom/reverse-geocode', {
+                lat: location_context.coordinates.lat,
+                lon: location_context.coordinates.lon
+              });
+              
+              if (reverseResult && reverseResult.addresses && reverseResult.addresses.length > 0) {
+                response = `The address for coordinates ${location_context.coordinates.lat}, ${location_context.coordinates.lon} is: ${reverseResult.addresses[0].address.freeformAddress}`;
+              } else {
+                response = `I couldn't find an address for those coordinates.`;
+              }
+            } catch (error) {
+              console.error('MCP reverse geocode tool error:', error);
+              response = `I'm having trouble reverse geocoding those coordinates. Please try again later.`;
+            }
+            break;
         
       default:
         response = `I can help you with location-based queries. What would you like to do?`;

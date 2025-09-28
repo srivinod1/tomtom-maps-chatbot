@@ -37,26 +37,39 @@ class A2AProtocol {
       throw new Error(`Agent ${targetAgentId} not registered`);
     }
 
+    // Generate task and trace IDs for observability
+    const taskId = options.taskId || this.generateTaskId();
+    const traceId = options.traceId || this.generateTraceId();
+
+    // A2A Envelope following best practices
+    const envelope = {
+      a2a_version: "1.0",
+      task_id: taskId,
+      trace_id: traceId,
+      from: this.agentId,
+      to: targetAgentId,
+      topic: options.topic || this.getTopicForMessageType(messageType),
+      intent: messageType.toUpperCase(),
+      budget: {
+        tokens: options.budget?.tokens || 2000,
+        tool_calls: options.budget?.tool_calls || 3,
+        deadline_ms: options.budget?.deadline_ms || 15000
+      },
+      ts: new Date().toISOString()
+    };
+
+    // A2A Payload (strict JSON)
+    const a2aPayload = {
+      instructions: payload.instructions || this.getDefaultInstructions(messageType),
+      context_refs: payload.context_refs || [],
+      needs_tooling: payload.needs_tooling || false,
+      expected_output_schema: payload.expected_output_schema || this.getDefaultOutputSchema(messageType),
+      ...payload
+    };
+
     const a2aMessage = {
-      protocol: 'A2A',
-      version: '1.0',
-      timestamp: new Date().toISOString(),
-      source: {
-        agentId: this.agentId,
-        agentType: this.agentType,
-        url: this.baseUrl
-      },
-      target: {
-        agentId: targetAgentId,
-        agentType: targetAgent.type,
-        url: targetAgent.url
-      },
-      message: {
-        type: messageType,
-        payload: payload,
-        correlationId: options.correlationId || this.generateCorrelationId(),
-        timeout: options.timeout || 30000
-      }
+      envelope: envelope,
+      payload: a2aPayload
     };
 
     try {
@@ -146,6 +159,97 @@ class A2AProtocol {
    */
   generateCorrelationId() {
     return `${this.agentId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Generate task ID for observability
+   */
+  generateTaskId() {
+    return `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Generate trace ID for observability
+   */
+  generateTraceId() {
+    return `trace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Get A2A topic for message type
+   */
+  getTopicForMessageType(messageType) {
+    const topicMap = {
+      'search_places': 'execution',
+      'geocode_address': 'execution',
+      'reverse_geocode': 'execution',
+      'calculate_route': 'execution',
+      'generate_static_map': 'execution',
+      'process_location_request': 'execution',
+      'chat_message': 'planning',
+      'get_capabilities': 'analysis'
+    };
+    return topicMap[messageType] || 'execution';
+  }
+
+  /**
+   * Get default instructions for message type
+   */
+  getDefaultInstructions(messageType) {
+    const instructionMap = {
+      'search_places': 'Search for places near the specified location',
+      'geocode_address': 'Convert the address to coordinates',
+      'reverse_geocode': 'Convert coordinates to an address',
+      'calculate_route': 'Calculate route between two points',
+      'generate_static_map': 'Generate a static map image',
+      'process_location_request': 'Process the location-based request',
+      'chat_message': 'Handle the chat message appropriately',
+      'get_capabilities': 'Return agent capabilities'
+    };
+    return instructionMap[messageType] || 'Process the request';
+  }
+
+  /**
+   * Get default output schema for message type
+   */
+  getDefaultOutputSchema(messageType) {
+    const schemaMap = {
+      'search_places': {
+        places: [
+          { name: 'string', address: 'string', rating: 'number', distance: 'number' }
+        ]
+      },
+      'geocode_address': {
+        coordinates: { lat: 'number', lon: 'number' },
+        address: 'string'
+      },
+      'reverse_geocode': {
+        address: 'string',
+        formatted_address: 'string'
+      },
+      'calculate_route': {
+        distance: 'number',
+        duration: 'number',
+        steps: 'array'
+      },
+      'generate_static_map': {
+        url: 'string'
+      },
+      'process_location_request': {
+        success: 'boolean',
+        response: 'string',
+        updated_context: 'object'
+      },
+      'chat_message': {
+        response: 'string',
+        agent_used: 'string',
+        query_type: 'string'
+      },
+      'get_capabilities': {
+        capabilities: 'array'
+      }
+    };
+    return schemaMap[messageType] || { result: 'any' };
   }
 
   /**

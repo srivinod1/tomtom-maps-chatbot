@@ -3,15 +3,17 @@
     "version": "1.0.0",
     "description": "TomTom Maps integration for Model Context Protocol and Google ADK",
     "main": "src/unified-server.js",
-    "scripts": {
-        "start": "node src/unified-server.js",
-        "dev": "nodemon src/unified-server.js",
-        "orchestrator": "node src/orchestrator-agent.js",
-        "maps": "node src/maps-agent.js",
-        "maps-dev": "nodemon src/maps-agent.js",
-        "test": "jest",
-        "adk": "python src/tools.py"
-    },
+  "scripts": {
+    "start": "node src/unified-server.js",
+    "dev": "nodemon src/unified-server.js",
+    "mcp-tools": "node src/mcp-tool-server.js",
+    "mcp-tools-dev": "nodemon src/mcp-tool-server.js",
+    "orchestrator": "node src/orchestrator-agent.js",
+    "maps": "node src/maps-agent.js",
+    "maps-dev": "nodemon src/maps-agent.js",
+    "test": "jest",
+    "adk": "python src/tools.py"
+  },
     "dependencies": {
         "@google-cloud/logging": "^11.2.1",
         "@google-cloud/monitoring": "^5.3.0",
