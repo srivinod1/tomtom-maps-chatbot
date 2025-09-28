@@ -236,22 +236,41 @@ function getConversationContext(userId, limit = 10) {
 
 // LLM-based context extraction and intent understanding
 async function extractContextAndIntent(message, userContext, conversationContext) {
-  const contextPrompt = `You are a context extraction assistant for a location-based chatbot. 
+  const contextPrompt = `You are an intelligent orchestrator agent for a location-based chatbot system. Your role is to:
 
-User's current message: "${message}"
+1. ANALYZE user messages to understand their intent
+2. EXTRACT location context from messages or conversation history
+3. ROUTE requests to the appropriate specialized agent (Maps Agent for location queries, General AI for other queries)
 
-Previous conversation context:
+SYSTEM CAPABILITIES:
+- Maps Agent: Handles location search, geocoding, directions, static maps
+- General AI Agent: Handles general conversation, knowledge questions, greetings
+
+USER'S CURRENT MESSAGE: "${message}"
+
+CONVERSATION HISTORY:
 ${conversationContext.map(msg => `${msg.type}: ${msg.message}`).join('\n')}
 
-User's stored context:
+USER'S STORED CONTEXT:
 - Last location: ${userContext.lastLocation ? JSON.stringify(userContext.lastLocation) : 'None'}
 - Last coordinates: ${userContext.lastCoordinates ? JSON.stringify(userContext.lastCoordinates) : 'None'}
 
-Analyze the user's message and extract:
-1. Intent: What does the user want to do? (search_places, geocode, directions, general_chat, etc.)
-2. Location context: What location should be used? Extract from message or use context
-3. Search query: What should be searched for?
-4. Tool needed: Which tool should be called?
+ANALYSIS REQUIRED:
+1. INTENT CLASSIFICATION: Is this a location-based query or general conversation?
+2. LOCATION EXTRACTION: What location should be used? (extract from message, use context, or reference previous location)
+3. QUERY PROCESSING: What should be searched for or what action should be taken?
+4. AGENT ROUTING: Which agent should handle this request?
+
+LOCATION QUERY INDICATORS:
+- "find", "search", "near", "close to", "restaurants", "coffee shops", "places"
+- "coordinates", "address", "geocode", "lat", "long", "latitude", "longitude"
+- "directions", "route", "how to get to", "drive to"
+- "that address", "this location", "near me", "around here"
+
+CONTEXT REFERENCES:
+- "that address" = use last known address
+- "near me" = use last known coordinates
+- "this location" = use last known location
 
 Respond with a JSON object in this exact format:
 {

@@ -1,25 +1,29 @@
-# Multi-Agent TomTom Maps MCP Server Architecture
+# Multi-Agent TomTom Maps System Architecture
+## Google ADK + A2A + MCP Implementation
 
-This document provides a comprehensive overview of the multi-agent system architecture, implementation details, and design decisions.
+This document provides a comprehensive overview of the multi-agent system architecture following Google ADK best practices with A2A for agent communication and MCP for tool access.
 
 ## 🏗️ System Overview
 
-The Multi-Agent TomTom Maps Server implements a hybrid architecture combining:
+The Multi-Agent TomTom Maps System implements a production-ready architecture combining:
 
-- **A2A (Agent-to-Agent) Protocol**: For inter-agent communication
-- **MCP (Model Context Protocol)**: For internal TomTom API access within Maps Agent
+- **Google ADK**: For orchestration, state management, and agent lifecycle
+- **A2A (Agent-to-Agent) Protocol**: For standardized inter-agent communication
+- **MCP (Model Context Protocol)**: For tool access and external API integration
 - **JSON-RPC**: For frontend to Orchestrator communication
 
-This provides location-based services through specialized agents with clean separation of concerns.
+This provides location-based services through specialized agents with enterprise-grade separation of concerns, observability, and security.
 
 ## 🎯 Design Principles
 
-1. **A2A Protocol**: Standardized agent-to-agent communication
-2. **MCP Integration**: Internal TomTom API access via MCP within Maps Agent
-3. **Agent Specialization**: Each agent handles specific types of queries
-4. **Single Frontend Interface**: One JSON-RPC endpoint for frontend
-5. **Railway Ready**: Designed for easy deployment on Railway
-6. **Frontend Agnostic**: Works with any frontend that supports HTTP/JSON-RPC
+1. **Google ADK Orchestration**: Centralized task management, routing, budgets, and stop conditions
+2. **A2A Protocol**: Standardized agent-to-agent communication with envelope + payload structure
+3. **MCP Tool Access**: External capabilities exposed via MCP servers with schemas
+4. **Agent Specialization**: Single-purpose agents with clear intent and IO schemas
+5. **Memory Management**: Blackboard (episodic) + RAG (semantic) via MCP
+6. **Security & Governance**: Least privilege, supply chain hygiene, audit trails
+7. **Observability**: Per-task tracing, cost tracking, performance monitoring
+8. **Single Frontend Interface**: One JSON-RPC endpoint for frontend
 
 ## 🏛️ Architecture Diagram
 
@@ -32,71 +36,236 @@ This provides location-based services through specialized agents with clean sepa
                       │ HTTP/JSON-RPC
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
-│              Orchestrator Agent                                │
-│              (Port 3000)                                       │
+│              Google ADK Orchestrator                           │
+│              (Task Management & Routing)                       │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                JSON-RPC Router                          │   │
-│  │  • orchestrator.chat                                   │   │
-│  │  • orchestrator.capabilities                           │   │
-│  │  • orchestrator.context                                │   │
+│  │                A2A Event Bus                            │   │
+│  │  Topics: planning, retrieval, analysis, execution      │   │
+│  │  • orchestrator.chat (JSON-RPC)                        │   │
+│  │  • orchestrator.capabilities                            │   │
+│  │  • orchestrator.context                                 │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
-                      │ A2A Protocol
+                      │ A2A Protocol (Envelope + Payload)
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
-│                Maps Agent                                       │
-│                (Port 3002)                                     │
+│                Maps Agent (ADK Agent)                          │
+│                (Location Specialist)                           │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │                A2A + MCP Router                         │   │
-│  │  A2A: search_places, geocode_address, etc.             │   │
-│  │  MCP: maps.search, maps.geocode, etc.                  │   │
+│  │                A2A + MCP Client                         │   │
+│  │  A2A: Intent-based routing                             │   │
+│  │  MCP: Tool discovery & execution                       │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
-                      │ MCP Protocol
+                      │ MCP Protocol (Tool Schemas)
                       │
 ┌─────────────────────▼───────────────────────────────────────────┐
-│                TomTom Maps API                                  │
-│                (External)                                       │
+│                MCP Tool Servers                                 │
+│  ┌─────────────┬─────────────┬─────────────┬─────────────┐     │
+│  │ TomTom Maps │ Web Search  │ Knowledge   │ Static Maps │     │
+│  │ MCP Server  │ MCP Server  │ MCP Server  │ MCP Server  │     │
+│  └─────────────┴─────────────┴─────────────┴─────────────┘     │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      │ External APIs
+                      │
+┌─────────────────────▼───────────────────────────────────────────┐
+│                External Services                                │
+│  • TomTom Maps API  • Web APIs  • Knowledge Bases             │
 └─────────────────────────────────────────────────────────────────┘
+```
+
+## 🧠 Memory Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Memory Layer                                │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                Blackboard (Episodic)                    │   │
+│  │  • facts, assumptions, decisions                        │   │
+│  │  • open_questions, drafts                               │   │
+│  │  • context_refs for large artifacts                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                RAG Index (Semantic)                     │   │
+│  │  • MCP servers: kb.search, kb.store                    │   │
+│  │  • Source fingerprints for lineage                     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## 📨 A2A Message Contract
+
+### Envelope Structure
+```json
+{
+  "a2a_version": "1.0",
+  "task_id": "uuid",
+  "trace_id": "uuid", 
+  "from": "Orchestrator",
+  "to": "MapsAgent",
+  "topic": "execution",
+  "intent": "SEARCH_PLACES",
+  "budget": {"tokens": 2000, "tool_calls": 3, "deadline_ms": 15000},
+  "ts": "2025-09-28T10:15:00Z"
+}
+```
+
+### Payload Structure
+```json
+{
+  "instructions": "Find 3 restaurants near the specified location",
+  "context_refs": ["bb://facts/location-ctx", "bb://user/preferences"],
+  "needs_tooling": true,
+  "expected_output_schema": {
+    "places": [
+      {"name": "string", "address": "string", "rating": "number", "distance": "number"}
+    ],
+    "location_context": {"lat": "number", "lon": "number", "address": "string"}
+  }
+}
 ```
 
 ## 🤖 Agent Architecture
 
-### 1. Maps Agent (TomTom)
+### 1. Orchestrator Agent (Google ADK)
+**Purpose**: Central task management, routing, budgets, and stop conditions
+
+**ADK Configuration**:
+```json
+{
+  "name": "Orchestrator",
+  "intent": "Route and coordinate location-based requests",
+  "input_schema": {"message": "string", "user_id": "string"},
+  "output_schema": {"response": "string", "agent_used": "string", "query_type": "string"},
+  "tools_allowed": ["a2a://maps-agent", "a2a://general-ai-agent"],
+  "limits": {"timeout_ms": 30000, "max_calls": 10},
+  "escalation": "Supervisor"
+}
+```
+
+### 2. Maps Agent (ADK Agent)
 **Purpose**: Handles all location-based queries using TomTom Maps API
 
-**Capabilities**:
-- Location search using TomTom Orbis Search API
-- Geocoding and reverse geocoding
-- Route calculation and directions
-- Static map image generation
-- Matrix routing for multiple destinations
+**ADK Configuration**:
+```json
+{
+  "name": "MapsAgent",
+  "intent": "Process location-based requests using TomTom APIs",
+  "input_schema": {
+    "intent": "string",
+    "location_context": {"source": "string", "coordinates": "object", "address": "string"},
+    "search_query": "string",
+    "tool_needed": "string"
+  },
+  "output_schema": {
+    "success": "boolean",
+    "response": "string", 
+    "updated_context": "object"
+  },
+  "tools_allowed": [
+    "mcp://tomtom.search",
+    "mcp://tomtom.geocode", 
+    "mcp://tomtom.directions",
+    "mcp://tomtom.static-map"
+  ],
+  "limits": {"timeout_ms": 15000, "max_calls": 5},
+  "escalation": "Orchestrator"
+}
+```
 
-**MCP Methods**:
-- `maps.search`
-- `maps.geocode`
-- `maps.reverseGeocode`
-- `maps.directions`
-- `maps.staticMap`
-- `maps.matrix`
+**MCP Tool Integration**:
+- Tool discovery via MCP server manifests
+- Schema-based tool calls with JSON params
+- Result normalization and context updates
+- Error handling and retry logic
 
-**Implementation**: Direct integration with TomTom APIs through HTTP requests
-
-### 2. General AI Agent
+### 3. General AI Agent (ADK Agent)
 **Purpose**: Handles general knowledge and conversational queries
 
-**Capabilities**:
-- Natural language understanding
-- General knowledge responses
-- Help and greeting responses
-- Query classification
+**ADK Configuration**:
+```json
+{
+  "name": "GeneralAI",
+  "intent": "Handle general conversation and knowledge questions",
+  "input_schema": {"message": "string", "context": "string"},
+  "output_schema": {"response": "string", "confidence": "number"},
+  "tools_allowed": ["mcp://kb.search", "mcp://web.search"],
+  "limits": {"timeout_ms": 10000, "max_calls": 3},
+  "escalation": "Orchestrator"
+}
+```
 
-**MCP Methods**:
-- `agent.chat` (for general queries)
+## 🔒 Security & Governance
 
-**Implementation**: Rule-based responses with keyword matching
+### Least Privilege
+- Per-agent service accounts with scoped MCP tokens
+- Row/column-level database guards at MCP servers
+- Agent-specific API key rotation
+
+### Supply Chain Hygiene
+- Pin MCP server versions and verify signatures
+- Maintain allow-list registry for MCP servers
+- Monitor for malicious servers and compromised packages
+- Regular credential rotation and audit
+
+### Prompt Injection Protection
+- Treat tool outputs and web content as untrusted
+- Strip/annotate foreign instructions before tool use
+- Re-ground context before tool execution
+
+### Audit Trail
+- Record A2A envelopes with task_id and trace_id
+- Log MCP tool names, param hashes (not secrets)
+- Track result references and timestamps for lineage
+
+## 📊 Observability
+
+### Per-Task Tracking
+- Success rate and handoffs per task
+- Steps to success and grounding quality
+- Tool error & retry rates, circuit-breaker trips
+- Latency & cost per agent and MCP tool
+
+### Performance Metrics
+- Agent response times and throughput
+- MCP tool call success rates
+- Memory usage and context size
+- Cost tracking per operation
+
+### Debugging
+- ADK debugging UI integration
+- A2A message flow visualization
+- MCP tool call traces
+- Error propagation analysis
+
+## 🚀 Implementation Strategy
+
+### Phase 1: Core ADK Integration
+1. Implement Google ADK orchestrator
+2. Convert existing agents to ADK agents
+3. Implement A2A message contracts
+4. Add MCP tool discovery
+
+### Phase 2: Memory & Context
+1. Implement blackboard memory system
+2. Add RAG index via MCP servers
+3. Context reference management
+4. Conversation state persistence
+
+### Phase 3: Security & Observability
+1. Implement security controls
+2. Add comprehensive logging
+3. Performance monitoring
+4. Cost tracking
+
+### Phase 4: Advanced Features
+1. Multi-tool orchestration
+2. Complex workflow support
+3. Advanced error handling
+4. Production optimization
 
 ### 3. Context Manager Agent
 **Purpose**: Manages user context and conversation history
