@@ -482,6 +482,7 @@ function getUserContext(userId) {
       lastSearchType: null,
       lastSearchResults: null,
       lastSearchLocation: null,
+      lastSearchPlaceNames: null,
       conversationHistory: []
     };
   }
@@ -523,7 +524,8 @@ function resolveConversationalReference(message, userContext) {
     return {
       searchType: userContext.lastSearchType,
       shouldUseContext: true,
-      isReference: true
+      isReference: true,
+      lastSearchResults: userContext.lastSearchResults
     };
   }
   
@@ -539,6 +541,25 @@ function resolveConversationalReference(message, userContext) {
     searchType: null,
     shouldUseContext: false
   };
+}
+
+// Enhanced geographic intelligence
+function getGeographicBias(cityName) {
+  const cityBias = {
+    'paris': 'point:48.8566,2.3522',
+    'amsterdam': 'point:52.3676,4.9041',
+    'london': 'point:51.5074,-0.1278',
+    'new york': 'point:40.7128,-74.0060',
+    'berlin': 'point:52.5200,13.4050',
+    'madrid': 'point:40.4168,-3.7038',
+    'rome': 'point:41.9028,12.4964',
+    'barcelona': 'point:41.3851,2.1734',
+    'milan': 'point:45.4642,9.1900',
+    'vienna': 'point:48.2082,16.3738'
+  };
+  
+  const normalizedCity = cityName.toLowerCase().trim();
+  return cityBias[normalizedCity] || null;
 }
 
 // LLM-based context extraction and intent understanding
@@ -579,12 +600,19 @@ ${conversationContext.map(msg => `${msg.type}: ${msg.message}`).join('\n')}
 CONVERSATIONAL REFERENCE ANALYSIS:
 ${contextRef.shouldUseContext ? `DETECTED REFERENCE: ${JSON.stringify(contextRef)}` : 'No conversational reference detected'}
 
+PRONOUN RESOLUTION RULES:
+- "they", "them" = refer to last search results (restaurants, places, etc.)
+- "the same" = use last search type (restaurants, coffee shops, etc.)
+- "how far are they" = calculate directions to last search results
+- "where are they" = show locations of last search results
+
 USER'S STORED CONTEXT:
 - Last location: ${userContext.lastLocation ? JSON.stringify(userContext.lastLocation) : 'None'}
 - Last coordinates: ${userContext.lastCoordinates ? JSON.stringify(userContext.lastCoordinates) : 'None'}
 - Last search type: ${userContext.lastSearchType || 'None'}
 - Last search results: ${userContext.lastSearchResults ? 'Available' : 'None'}
 - Last search location: ${userContext.lastSearchLocation || 'None'}
+- Last search place names: ${userContext.lastSearchPlaceNames ? JSON.stringify(userContext.lastSearchPlaceNames) : 'None'}
 
 CONTEXT USAGE EXAMPLES:
 - If lastSearchType = "restaurants" and user says "find me near paris central" → search for "restaurants near Paris Central"
@@ -614,7 +642,10 @@ CONVERSATIONAL CONTEXT HANDLING - CRITICAL RULES:
 3. GEOGRAPHIC INTELLIGENCE:
    - "Paris Central" = Paris, France (NOT Maine, USA)
    - "London Airport" = London, UK (NOT random "Find" businesses)
+   - "Amsterdam Central" = Amsterdam, Netherlands
+   - "New York" = New York, USA
    - Always validate search results make geographic sense
+   - Use proper geobias for international cities
 
 4. CONTEXT USAGE:
    - Use lastSearchType to determine what to search for
@@ -632,6 +663,11 @@ IMPORTANT FOR DIRECTIONS/MATRIX ROUTING:
 LOCATION QUERY INDICATORS (be precise in detection):
 - SEARCH QUERIES: "find", "search", "near", "close to", "restaurants", "coffee shops", "places", "shops", "stores", "hotels", "gas stations", "pharmacy", "hospital", "bank", "atm", "nearby", "around", "in the area"
 - GEOCODING QUERIES: "coordinates", "address", "geocode", "lat", "long", "latitude", "longitude", "where is", "location of", "exact location", "what are the coordinates", "get coordinates", "find coordinates"
+
+GENERAL KNOWLEDGE QUERIES (NOT location-based):
+- STATISTICAL QUESTIONS: "how many", "number of", "count", "total", "population", "statistics"
+- GENERAL INFO: "what is", "tell me about", "explain", "describe", "history of", "facts about"
+- EXAMPLES: "what is the number of restaurants in amsterdam" → general_chat (statistical question)
 - DIRECTIONS QUERIES: "directions", "route", "how to get to", "drive to", "walk to", "travel to", "go to", "navigate to", "how do I get", "how long does it take", "travel time", "driving time", "walking time", "distance", "from X to Y", "get from", "travel from", "go from", "navigate from"
 - MATRIX ROUTING QUERIES: "matrix routing", "travel time matrix", "distance matrix", "compare travel times", "between multiple locations", "from A, B to X, Y", "travel times between", "compare routes", "matrix", "travel matrix", "distance matrix", "compare travel", "multiple locations", "from X to Y to Z", "matrix from", "travel times between", "compare routes between", "matrix from X to Y", "travel time matrix from X to Y"
 - REVERSE GEOCODING: "what is this address", "address of these coordinates", "reverse geocode"
@@ -1145,7 +1181,14 @@ async function geocodeLocation(query, geobias = null, userContext = null) {
     let determinedGeobias = geobias;
     
     if (!determinedGeobias) {
-      determinedGeobias = await determineGeobiasWithLLM(query, userContext);
+      // First try geographic intelligence for known cities
+      const cityBias = getGeographicBias(query);
+      if (cityBias) {
+        determinedGeobias = cityBias;
+        console.log('🌍 Using geographic intelligence:', determinedGeobias);
+      } else {
+        determinedGeobias = await determineGeobiasWithLLM(query, userContext);
+      }
     }
     
     if (determinedGeobias) {
@@ -1835,10 +1878,18 @@ async function handleOrchestratorChat(rpcRequest, res) {
               else if (contextAnalysis.search_query.toLowerCase().includes('gas')) searchType = 'gas stations';
             }
             
+            // Extract place names from the response for better pronoun resolution
+            const placeNames = [];
+            const placeMatches = response.match(/\*\*(.*?)\*\*/g);
+            if (placeMatches) {
+              placeNames.push(...placeMatches.map(match => match.replace(/\*\*/g, '')));
+            }
+            
             updateUserContext(user_id, {
               lastSearchType: searchType,
               lastSearchResults: response,
-              lastSearchLocation: contextAnalysis.location_context.address || contextAnalysis.search_query
+              lastSearchLocation: contextAnalysis.location_context.address || contextAnalysis.search_query,
+              lastSearchPlaceNames: placeNames
             });
           }
         } else {
