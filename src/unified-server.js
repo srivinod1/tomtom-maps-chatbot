@@ -55,7 +55,8 @@ async function initializeMCPClient() {
     console.log('🔧 MCP Client initialized with tools:', mcpClient.getAvailableTools());
   } catch (error) {
     console.warn('⚠️  MCP Client initialization failed:', error.message);
-    console.log('   Make sure MCP Tool Server is running on', MCP_TOOL_SERVER_URL);
+    console.log('   MCP Tool Server not available - using fallback methods');
+    // In Railway, we'll use direct TomTom API calls as fallback
   }
 }
 
@@ -220,8 +221,8 @@ let conversationHistory = [];
 let userContexts = {};
 
 // Initialize Comprehensive Observability
-// Initialize observability (disabled for testing)
-const observability = null; // Disabled for testing - enable when credentials are available
+// Initialize observability (disabled for Railway deployment)
+const observability = null; // Disabled for Railway - enable when Google Cloud credentials are properly configured
 
 // User Context Management
 function getUserContext(userId) {
@@ -1286,23 +1287,30 @@ async function processLocationRequest(payload) {
       searchLocation = { lat: 47.6062, lon: -122.3321 };
     }
     
-        // Execute the appropriate MCP tool based on intent
+        // Execute the appropriate tool based on intent
         switch (tool_needed) {
           case 'search_places':
             try {
-              const searchResult = await mcpClient.callTool('mcp://tomtom/search', {
-                query: search_query || 'places',
-                lat: searchLocation.lat,
-                lon: searchLocation.lon,
-                radius: 5000,
-                limit: 10
-              });
+              // Try MCP tool first, fallback to direct API call
+              let searchResult;
+              try {
+                searchResult = await mcpClient.callTool('mcp://tomtom/search', {
+                  query: search_query || 'places',
+                  lat: searchLocation.lat,
+                  lon: searchLocation.lon,
+                  radius: 5000,
+                  limit: 10
+                });
+              } catch (mcpError) {
+                console.log('MCP tool not available, using direct API call');
+                searchResult = await searchLocationsOrbis(search_query || 'places', searchLocation);
+              }
               
               if (searchResult && searchResult.places && searchResult.places.length > 0) {
                 response = `I found ${searchResult.places.length} places for "${search_query || 'places'}":\n\n`;
                 searchResult.places.slice(0, 3).forEach((place, index) => {
-                  response += `${index + 1}. **${place.name}**\n`;
-                  response += `   📍 ${place.address}\n`;
+                  response += `${index + 1}. **${place.name || place.poi?.name || 'Unknown'}**\n`;
+                  response += `   📍 ${place.address || place.formatted_address || 'Address not available'}\n`;
                   if (place.rating > 0) response += `   ⭐ ${place.rating}/5\n`;
                   if (place.distance) response += `   📏 ${place.distance} km away\n`;
                   response += '\n';
@@ -1311,30 +1319,38 @@ async function processLocationRequest(payload) {
                 response = `I couldn't find any places for "${search_query || 'places'}" near the specified location.`;
               }
             } catch (error) {
-              console.error('MCP search tool error:', error);
+              console.error('Search tool error:', error);
               response = `I'm having trouble searching for places right now. Please try again later.`;
             }
             break;
         
           case 'geocode_address':
             try {
-              const geocodeResult = await mcpClient.callTool('mcp://tomtom/geocode', {
-                address: location_context.address,
-                limit: 1
-              });
+              // Try MCP tool first, fallback to direct API call
+              let geocodeResult;
+              try {
+                geocodeResult = await mcpClient.callTool('mcp://tomtom/geocode', {
+                  address: location_context.address,
+                  limit: 1
+                });
+              } catch (mcpError) {
+                console.log('MCP geocode tool not available, using direct API call');
+                geocodeResult = await geocodeAddress(location_context.address);
+              }
               
               if (geocodeResult && geocodeResult.results && geocodeResult.results.length > 0) {
                 const coords = geocodeResult.results[0].position;
-                response = `The coordinates for "${geocodeResult.results[0].address.freeformAddress}" are approximately ${coords.lat.toFixed(6)}° N, ${coords.lon.toFixed(6)}° E.`;
+                const address = geocodeResult.results[0].address.freeformAddress || geocodeResult.results[0].address;
+                response = `The coordinates for "${address}" are approximately ${coords.lat.toFixed(6)}° N, ${coords.lon.toFixed(6)}° E.`;
                 updated_context = {
                   lastCoordinates: { lat: coords.lat, lon: coords.lon },
-                  lastLocation: { source: 'address', address: geocodeResult.results[0].address.freeformAddress }
+                  lastLocation: { source: 'address', address: address }
                 };
               } else {
                 response = `I couldn't find coordinates for that address.`;
               }
             } catch (error) {
-              console.error('MCP geocode tool error:', error);
+              console.error('Geocode tool error:', error);
               response = `I'm having trouble geocoding that address. Please try again later.`;
             }
             break;

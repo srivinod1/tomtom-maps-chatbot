@@ -1,10 +1,14 @@
 # Railway Deployment Guide
 
-This guide explains how to deploy the Multi-Agent TomTom Maps MCP Server to Railway.
+This guide explains how to deploy the Google ADK + A2A + MCP Multi-Agent System to Railway.
 
 ## 🚂 Deployment Overview
 
-The deployment consists of a **single service** on Railway that runs the MCP server with multi-agent capabilities.
+The deployment consists of a **single unified service** on Railway that runs:
+- Google ADK Orchestrator
+- A2A Protocol for inter-agent communication  
+- MCP Tool Integration with fallback methods
+- Specialized agents (Maps, General AI)
 
 ## 📋 Prerequisites
 
@@ -46,11 +50,18 @@ Ensure your repository contains:
    - Click "Variables" tab
    - Add the following environment variables:
 
+   **Required:**
    ```
    TOMTOM_API_KEY=your_actual_tomtom_api_key_here
+   NODE_ENV=production
+   ```
+
+   **Optional (for enhanced features):**
+   ```
    OPENAI_API_KEY=your_openai_api_key_here
    ANTHROPIC_API_KEY=your_anthropic_api_key_here
-   NODE_ENV=production
+   GOOGLE_CLOUD_PROJECT=your_gcp_project_id
+   GOOGLE_APPLICATION_CREDENTIALS=your_service_account_json
    ```
 
 5. **Deploy**:
@@ -120,17 +131,25 @@ https://your-service-name-production-xxxx.up.railway.app
 curl https://your-service-name-production-xxxx.up.railway.app/
 ```
 
-### Test MCP Methods
+### Test Multi-Agent System
 ```bash
-# Test agent capabilities
+# Test orchestrator capabilities
 curl -X POST https://your-service-name-production-xxxx.up.railway.app \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.capabilities"}'
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "orchestrator.capabilities"}'
 
-# Test agent chat
+# Test location search (Maps Agent)
 curl -X POST https://your-service-name-production-xxxx.up.railway.app \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc": "2.0", "id": 1, "method": "agent.chat", "params": {"message": "Hello!", "user_id": "test_user"}}'
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "orchestrator.chat", "params": {"message": "Find coffee shops near me", "user_id": "test_user"}}'
+
+# Test general chat (General AI Agent)
+curl -X POST https://your-service-name-production-xxxx.up.railway.app \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "orchestrator.chat", "params": {"message": "Hello! How are you?", "user_id": "test_user"}}'
+
+# Test analytics
+curl https://your-service-name-production-xxxx.up.railway.app/analytics
 ```
 
 ## 🔍 Monitoring & Debugging
