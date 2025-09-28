@@ -17,6 +17,12 @@ require('dotenv').config();
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
+// Debug environment variables
+console.log('Environment variables check:');
+console.log('OPENAI_API_KEY:', OPENAI_API_KEY ? `${OPENAI_API_KEY.substring(0, 10)}...` : 'NOT SET');
+console.log('ANTHROPIC_API_KEY:', ANTHROPIC_API_KEY ? `${ANTHROPIC_API_KEY.substring(0, 10)}...` : 'NOT SET');
+console.log('TOMTOM_API_KEY:', TOMTOM_API_KEY ? `${TOMTOM_API_KEY.substring(0, 10)}...` : 'NOT SET');
+
 // Constants for TomTom API
 const TOMTOM_API_KEY = process.env.TOMTOM_API_KEY;
 const TOMTOM_ORBIS_SEARCH_URL = 'https://api.tomtom.com/maps/orbis/places/nearbySearch/.json';
