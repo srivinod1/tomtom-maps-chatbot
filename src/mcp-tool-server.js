@@ -294,24 +294,26 @@ class MCPToolServer {
 
   async searchPlaces(input) {
     const { query, lat, lon, radius = 5000, limit = 10 } = input;
-    const url = `https://api.tomtom.com/maps/orbis/places/nearbySearch/.json`;
+    
+    // Use the same Search API that works locally instead of Orbis API
+    const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json`;
     
     const params = {
       key: this.tomtomApiKey,
-      lat: lat,
-      lon: lon,
-      radius: radius,
       limit: limit,
-      query: query
+      geobias: `point:${lat},${lon}` // Use geobias instead of lat/lon/radius
     };
 
+    console.log('MCP Search URL:', url);
+    console.log('MCP Search params:', params);
+    
     const response = await axios.get(url, { params });
     
     if (response.data && response.data.results) {
       return {
         places: response.data.results.map(place => ({
-          name: place.poi?.name || 'Unknown',
-          address: place.address?.freeformAddress || 'Address not available',
+          name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
+          address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
           rating: place.poi?.rating || 0,
           distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
           coordinates: {
