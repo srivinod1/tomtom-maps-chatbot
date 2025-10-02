@@ -38,7 +38,7 @@ class MistralHTTPMCPServer {
   }
 
   setupMCPServer() {
-    // MCP Server Info endpoint
+    // MCP Server Info endpoint (GET and POST)
     this.app.get('/', (req, res) => {
       // Add debugging headers
       res.header('Access-Control-Allow-Origin', '*');
@@ -59,6 +59,58 @@ class MistralHTTPMCPServer {
         },
         id: 1
       });
+    });
+
+    // Handle POST requests to root endpoint (for MCP protocol)
+    this.app.post('/', (req, res) => {
+      // Add debugging headers
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+      
+      const { method, params, id } = req.body;
+      
+      // Handle different MCP methods
+      switch (method) {
+        case 'ping':
+          res.json({
+            jsonrpc: "2.0",
+            result: { pong: true },
+            id: id || 1
+          });
+          break;
+        case 'initialize':
+          res.json({
+            jsonrpc: "2.0",
+            result: {
+              protocolVersion: "2024-11-05",
+              capabilities: {
+                tools: {}
+              },
+              serverInfo: {
+                name: "tomtom-maps-server",
+                version: "1.0.0"
+              }
+            },
+            id: id || 1
+          });
+          break;
+        default:
+          res.json({
+            jsonrpc: "2.0",
+            result: {
+              protocolVersion: "2024-11-05",
+              capabilities: {
+                tools: {}
+              },
+              serverInfo: {
+                name: "tomtom-maps-server",
+                version: "1.0.0"
+              }
+            },
+            id: id || 1
+          });
+      }
     });
 
     // MCP Tools List endpoint
