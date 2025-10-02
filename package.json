@@ -16,7 +16,7 @@
     "mcp-proper": "node src/mcp-server-proper.js",
     "mistral-mcp": "node src/mistral-lechat-mcp-server.js",
     "mistral-mcp-proper": "node src/mistral-mcp-server.js",
-    "mistral-http-mcp": "node src/mistral-http-mcp-server.js",
+    "mistral-sse-mcp": "node src/mistral-sse-mcp-server.js",
     "test": "jest",
     "test-enhanced": "python3 test_enhanced_architecture.py",
     "test-adk": "python3 test_adk_a2a_mcp.py"
