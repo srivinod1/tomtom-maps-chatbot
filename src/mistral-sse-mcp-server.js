@@ -76,6 +76,8 @@ class MistralSSEMCPServer {
     // Also provide GET endpoint for SSE stream only (for compatibility)
     this.app.get('/sse', (req, res) => {
       console.log('🔌 SSE GET connection from:', req.headers['user-agent']);
+      console.log('🔍 GET request headers:', req.headers);
+      console.log('🔍 GET request query:', req.query);
       
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -90,10 +92,49 @@ class MistralSSEMCPServer {
       // Send connection event
       res.write(': connected\n\n');
       
+      // Send initial MCP server info
+      res.write(`data: ${JSON.stringify({
+        jsonrpc: "2.0",
+        result: {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            tools: {},
+            logging: {}
+          },
+          serverInfo: {
+            name: "tomtom-maps-server",
+            version: "1.0.0"
+          }
+        },
+        id: 1
+      })}\n\n`);
+      
       req.on('close', () => {
         console.log('🔌 GET SSE client disconnected:', clientId);
         this.clients.delete(clientId);
       });
+    });
+
+    // Alternative MCP endpoint - some clients might expect this
+    this.app.post('/mcp', (req, res) => {
+      console.log('🔌 MCP POST connection from:', req.headers['user-agent']);
+      console.log('📨 MCP message from POST body:', req.body);
+      
+      if (req.body && req.body.method) {
+        console.log('📨 Processing MCP message:', req.body.method);
+        this.handleMCPMessage(req.body, res);
+      } else {
+        console.log('⚠️ No valid MCP message in POST body');
+        res.json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32700,
+            message: "Parse error",
+            data: "No valid MCP message found"
+          },
+          id: null
+        });
+      }
     });
   }
 
@@ -451,7 +492,8 @@ class MistralSSEMCPServer {
         provider: 'Mistral Le Chat',
         endpoints: {
           sse: 'GET /sse - SSE connection',
-          mcp: 'POST /sse - MCP messages',
+          ssePost: 'POST /sse - MCP messages via SSE',
+          mcp: 'POST /mcp - MCP messages via HTTP',
           health: 'GET / - Health check'
         },
         tools: [
