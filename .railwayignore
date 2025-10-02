@@ -1,0 +1,30 @@
+# Python files (ignore for Railway Node.js detection)
+*.py
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache
+.pytest_cache
+.hypothesis
+
+# Test files
+test_*.py
+*_test.py
+
+# Virtual environments
+.env
