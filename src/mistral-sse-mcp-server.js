@@ -40,9 +40,9 @@ class MistralSSEMCPServer {
   }
 
   setupSSE() {
-    // SSE endpoint for MCP communication (GET only - handles both connection and messages)
-    this.app.get('/sse', (req, res) => {
-      console.log('🔌 SSE connection from:', req.headers['user-agent']);
+    // POST endpoint that returns SSE for MCP communication
+    this.app.post('/sse', (req, res) => {
+      console.log('🔌 SSE POST connection from:', req.headers['user-agent']);
       
       // Set SSE headers
       res.writeHead(200, {
@@ -58,9 +58,14 @@ class MistralSSEMCPServer {
       this.clients.set(clientId, res);
       console.log('🔌 Client connected:', clientId);
 
-      // ⭐ KEY FIX: Read incoming data from the GET request body
+      // Handle initial message from POST body
+      if (req.body && req.body.method) {
+        console.log('📨 Initial MCP message from POST body:', req.body.method);
+        this.handleMCPMessage(req.body, res);
+      }
+
+      // Keep connection open for additional messages via request body
       let buffer = '';
-      
       req.on('data', (chunk) => {
         buffer += chunk.toString();
         
@@ -72,7 +77,7 @@ class MistralSSEMCPServer {
           if (line.trim()) {
             try {
               const message = JSON.parse(line);
-              console.log('📨 Received MCP message:', message.method);
+              console.log('📨 Received additional MCP message:', message.method);
               this.handleMCPMessage(message, res);
             } catch (error) {
               console.error('❌ Error parsing message:', error);
@@ -83,6 +88,29 @@ class MistralSSEMCPServer {
 
       req.on('close', () => {
         console.log('🔌 Client disconnected:', clientId);
+        this.clients.delete(clientId);
+      });
+    });
+
+    // Also provide GET endpoint for SSE stream only (for compatibility)
+    this.app.get('/sse', (req, res) => {
+      console.log('🔌 SSE GET connection from:', req.headers['user-agent']);
+      
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*'
+      });
+      
+      const clientId = Date.now() + Math.random();
+      this.clients.set(clientId, res);
+      
+      // Send connection event
+      res.write(': connected\n\n');
+      
+      req.on('close', () => {
+        console.log('🔌 GET SSE client disconnected:', clientId);
         this.clients.delete(clientId);
       });
     });
@@ -239,164 +267,6 @@ class MistralSSEMCPServer {
     }
   }
 
-  async handleMCPMessage(method, params, id, res) {
-    try {
-      console.log('🔍 MCP Message Received:', { method, params, id });
-      
-      let result;
-      
-      switch (method) {
-        case 'initialize':
-          console.log('✅ Handling initialize method');
-          result = {
-            jsonrpc: "2.0",
-            result: {
-              protocolVersion: "2024-11-05",
-              capabilities: {
-                tools: {},
-                logging: {}
-              },
-              serverInfo: {
-                name: "tomtom-maps-server",
-                version: "1.0.0"
-              }
-            },
-            id: id
-          };
-          break;
-          
-        case 'tools/list':
-          console.log('✅ Handling tools/list method');
-          result = {
-            jsonrpc: "2.0",
-            result: {
-              tools: [
-                {
-                  name: "search_places",
-                  description: "Search for places using TomTom API",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      query: { type: "string", description: "Search query" },
-                      lat: { type: "number", description: "Latitude" },
-                      lon: { type: "number", description: "Longitude" },
-                      radius: { type: "number", description: "Search radius in meters", default: 5000 },
-                      limit: { type: "number", description: "Maximum number of results", default: 10 }
-                    },
-                    required: ["query", "lat", "lon"]
-                  }
-                },
-                {
-                  name: "geocode_address",
-                  description: "Convert address to coordinates",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      address: { type: "string", description: "Address to geocode" },
-                      limit: { type: "number", description: "Maximum number of results", default: 1 }
-                    },
-                    required: ["address"]
-                  }
-                },
-                {
-                  name: "reverse_geocode",
-                  description: "Convert coordinates to address",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      lat: { type: "number", description: "Latitude" },
-                      lon: { type: "number", description: "Longitude" }
-                    },
-                    required: ["lat", "lon"]
-                  }
-                },
-                {
-                  name: "get_directions",
-                  description: "Get directions between two points",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      from: { type: "string", description: "Starting address or coordinates" },
-                      to: { type: "string", description: "Destination address or coordinates" },
-                      travelMode: { type: "string", description: "Travel mode", default: "car" }
-                    },
-                    required: ["from", "to"]
-                  }
-                },
-                {
-                  name: "generate_static_map",
-                  description: "Generate static map image",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      center: { type: "string", description: "Center coordinates" },
-                      zoom: { type: "number", description: "Zoom level", default: 10 },
-                      width: { type: "number", description: "Image width", default: 400 },
-                      height: { type: "number", description: "Image height", default: 300 }
-                    },
-                    required: ["center"]
-                  }
-                }
-              ]
-            },
-            id: id
-          };
-          break;
-          
-        case 'tools/call':
-          console.log('🔧 Tool call received:', params);
-          const { name, arguments: args } = params;
-          console.log('📞 Executing tool:', name);
-          console.log('📥 Tool arguments:', args);
-          
-          const toolResult = await this.executeTool(name, args);
-          console.log('📤 Tool result:', toolResult);
-          
-          result = {
-            jsonrpc: "2.0",
-            result: {
-              content: [
-                {
-                  type: "text",
-                  text: toolResult
-                }
-              ]
-            },
-            id: id
-          };
-          console.log('📋 Final response to Le Chat:', JSON.stringify(result, null, 2));
-          break;
-          
-        default:
-          console.log('❌ Unknown method:', method);
-          result = {
-            jsonrpc: "2.0",
-            error: {
-              code: -32601,
-              message: "Method not found",
-              data: `Unknown method: ${method}`
-            },
-            id: id
-          };
-      }
-      
-      console.log('📨 Sending response:', JSON.stringify(result, null, 2));
-      res.json(result);
-      
-    } catch (error) {
-      console.error('❌ MCP Error:', error);
-      console.error('❌ Error stack:', error.stack);
-      res.json({
-        jsonrpc: "2.0",
-        error: {
-          code: -32603,
-          message: "Internal error",
-          data: error.message
-        },
-        id: id
-      });
-    }
-  }
 
   async executeTool(name, args) {
     switch (name) {
@@ -417,7 +287,16 @@ class MistralSSEMCPServer {
 
   async searchPlaces(args) {
     console.log('🔍 searchPlaces called with args:', args);
-    const { query, lat, lon, radius = 5000, limit = 10 } = args;
+    const { query, location, lat = 52.3676, lon = 4.9041, radius = 5000, limit = 10 } = args;
+    
+    // If location is provided, try to geocode it first
+    if (location && !lat && !lon) {
+      const coords = await this.geocodeLocation(location);
+      if (coords) {
+        lat = coords.lat;
+        lon = coords.lon;
+      }
+    }
     
     console.log('🌐 Making TomTom API call...');
     const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json`;
@@ -508,11 +387,11 @@ class MistralSSEMCPServer {
   }
 
   async getDirections(args) {
-    const { from, to, travelMode = 'car' } = args;
+    const { origin, destination, travelMode = 'car' } = args;
     
     // First geocode both addresses
-    const fromCoords = await this.geocodeLocation(from);
-    const toCoords = await this.geocodeLocation(to);
+    const fromCoords = await this.geocodeLocation(origin);
+    const toCoords = await this.geocodeLocation(destination);
 
     if (!fromCoords || !toCoords) {
       return `Could not find coordinates for one or both addresses`;
@@ -533,13 +412,13 @@ class MistralSSEMCPServer {
       const distance = (summary.lengthInMeters / 1000).toFixed(1);
       const duration = Math.round(summary.travelTimeInSeconds / 60);
 
-      return `🚗 **Directions from ${from} to ${to}**\n\n` +
+      return `🚗 **Directions from ${origin} to ${destination}**\n\n` +
              `📏 **Distance:** ${distance} km\n` +
              `⏱️ **Duration:** ${duration} minutes\n` +
              `🚗 **Travel Mode:** ${travelMode}`;
     }
 
-    return `Could not calculate route from ${from} to ${to}`;
+    return `Could not calculate route from ${origin} to ${destination}`;
   }
 
   async generateStaticMap(args) {
