@@ -13,6 +13,8 @@
     "mcp-tools": "node src/mcp-tool-server.js",
     "mcp-tools-dev": "nodemon src/mcp-tool-server.js",
     "mcp-server": "node src/mcp-server-standalone.js",
+    "mcp-proper": "node src/mcp-server-proper.js",
+    "mistral-mcp": "node src/mistral-lechat-mcp-server.js",
     "test": "jest",
     "test-enhanced": "python3 test_enhanced_architecture.py",
     "test-adk": "python3 test_adk_a2a_mcp.py"

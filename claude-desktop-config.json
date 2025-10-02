@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tomtom-maps": {
+      "command": "node",
+      "args": ["src/mcp-server-proper.js"],
+      "cwd": "/Users/srikanth/ADK-Agent",
+      "env": {
+        "TOMTOM_API_KEY": "lo7LLQ3sNOEPcVad8LH7zq8UH3M5kGXG"
+      }
+    }
+  }
+}
