@@ -21,13 +21,30 @@ class MistralHTTPMCPServer {
   }
 
   setupMiddleware() {
-    this.app.use(cors());
+    // Enhanced CORS configuration for Mistral Le Chat
+    this.app.use(cors({
+      origin: true, // Allow all origins
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+      preflightContinue: false,
+      optionsSuccessStatus: 200
+    }));
+    
+    // Handle preflight requests
+    this.app.options('*', cors());
+    
     this.app.use(express.json());
   }
 
   setupMCPServer() {
     // MCP Server Info endpoint
     this.app.get('/', (req, res) => {
+      // Add debugging headers
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+      
       res.json({
         jsonrpc: "2.0",
         result: {
@@ -46,6 +63,11 @@ class MistralHTTPMCPServer {
 
     // MCP Tools List endpoint
     this.app.post('/tools/list', (req, res) => {
+      // Add CORS headers
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+      
       res.json({
         jsonrpc: "2.0",
         result: {
@@ -124,6 +146,11 @@ class MistralHTTPMCPServer {
 
     // MCP Tool Call endpoint
     this.app.post('/tools/call', async (req, res) => {
+      // Add CORS headers
+      res.header('Access-Control-Allow-Origin', '*');
+      res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+      
       const { name, arguments: args } = req.body.params;
       const requestId = req.body.id || 1;
 
