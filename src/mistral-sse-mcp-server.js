@@ -58,34 +58,15 @@ class MistralSSEMCPServer {
       this.clients.set(clientId, res);
       console.log('🔌 Client connected:', clientId);
 
-      // Handle initial message from POST body
+      // Handle message from POST body (already parsed by express.json())
       if (req.body && req.body.method) {
-        console.log('📨 Initial MCP message from POST body:', req.body.method);
+        console.log('📨 MCP message from POST body:', req.body.method);
         this.handleMCPMessage(req.body, res);
+      } else {
+        console.log('⚠️ No valid MCP message in POST body');
       }
 
-      // Keep connection open for additional messages via request body
-      let buffer = '';
-      req.on('data', (chunk) => {
-        buffer += chunk.toString();
-        
-        // Process complete JSON-RPC messages (separated by newlines)
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep incomplete line in buffer
-        
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const message = JSON.parse(line);
-              console.log('📨 Received additional MCP message:', message.method);
-              this.handleMCPMessage(message, res);
-            } catch (error) {
-              console.error('❌ Error parsing message:', error);
-            }
-          }
-        }
-      });
-
+      // Keep connection open
       req.on('close', () => {
         console.log('🔌 Client disconnected:', clientId);
         this.clients.delete(clientId);
