@@ -40,9 +40,9 @@ class MistralSSEMCPServer {
   }
 
   setupSSE() {
-    // SSE endpoint for MCP communication - handles both GET and POST
-    this.app.all('/sse', (req, res) => {
-      console.log('🔌 SSE connection from:', req.method, req.headers['user-agent']);
+    // SSE endpoint for MCP communication (GET only - handles both connection and messages)
+    this.app.get('/sse', (req, res) => {
+      console.log('🔌 SSE connection from:', req.headers['user-agent']);
       
       // Set SSE headers
       res.writeHead(200, {
@@ -56,60 +56,41 @@ class MistralSSEMCPServer {
 
       const clientId = Date.now() + Math.random();
       this.clients.set(clientId, res);
+      console.log('🔌 Client connected:', clientId);
 
-      if (req.method === 'GET') {
-        // Handle SSE connection
-        console.log('🔌 Establishing SSE connection for client:', clientId);
+      // ⭐ KEY FIX: Read incoming data from the GET request body
+      let buffer = '';
+      
+      req.on('data', (chunk) => {
+        buffer += chunk.toString();
         
-        // Send initial connection event
-        res.write(`data: ${JSON.stringify({
-          type: 'connection',
-          clientId: clientId,
-          status: 'connected'
-        })}\n\n`);
-
-        // Handle client disconnect
-        req.on('close', () => {
-          console.log('🔌 SSE client disconnected:', clientId);
-          this.clients.delete(clientId);
-        });
-      } else if (req.method === 'POST') {
-        // Handle MCP messages via POST to SSE endpoint
-        console.log('📨 MCP Message via POST to SSE');
+        // Process complete JSON-RPC messages (separated by newlines)
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
         
-        let body = '';
-        req.on('data', chunk => {
-          body += chunk.toString();
-        });
-
-        req.on('end', () => {
-          try {
-            const request = JSON.parse(body);
-            console.log('📨 Parsed MCP request:', request);
-            
-            const { jsonrpc, method, params, id } = request;
-            
-            // Process MCP message and send response via SSE
-            this.handleMCPMessageSSE(method, params, id, res);
-          } catch (error) {
-            console.error('❌ Error parsing MCP request:', error);
-            res.write(`data: ${JSON.stringify({
-              jsonrpc: '2.0',
-              error: {
-                code: -32700,
-                message: 'Parse error',
-                data: error.message
-              },
-              id: null
-            })}\n\n`);
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const message = JSON.parse(line);
+              console.log('📨 Received MCP message:', message.method);
+              this.handleMCPMessage(message, res);
+            } catch (error) {
+              console.error('❌ Error parsing message:', error);
+            }
           }
-        });
-      }
+        }
+      });
+
+      req.on('close', () => {
+        console.log('🔌 Client disconnected:', clientId);
+        this.clients.delete(clientId);
+      });
     });
   }
 
-  async handleMCPMessageSSE(method, params, id, res) {
+  async handleMCPMessage(message, res) {
     try {
+      const { jsonrpc, method, params, id } = message;
       console.log('🔍 MCP Message Received via SSE:', { method, params, id });
       
       let result;
@@ -118,97 +99,84 @@ class MistralSSEMCPServer {
         case 'initialize':
           console.log('✅ Handling initialize method via SSE');
           result = {
-            jsonrpc: "2.0",
-            result: {
-              protocolVersion: "2024-11-05",
-              capabilities: {
-                tools: {},
-                logging: {}
-              },
-              serverInfo: {
-                name: "tomtom-maps-server",
-                version: "1.0.0"
-              }
+            protocolVersion: "2024-11-05",
+            capabilities: {
+              tools: {},
+              logging: {}
             },
-            id: id
+            serverInfo: {
+              name: "tomtom-maps-server",
+              version: "1.0.0"
+            }
           };
           break;
           
         case 'tools/list':
           console.log('✅ Handling tools/list method via SSE');
           result = {
-            jsonrpc: "2.0",
-            result: {
-              tools: [
-                {
-                  name: "search_places",
-                  description: "Search for places using TomTom API",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      query: { type: "string", description: "Search query" },
-                      lat: { type: "number", description: "Latitude" },
-                      lon: { type: "number", description: "Longitude" },
-                      radius: { type: "number", description: "Search radius in meters", default: 5000 },
-                      limit: { type: "number", description: "Maximum number of results", default: 10 }
-                    },
-                    required: ["query", "lat", "lon"]
-                  }
-                },
-                {
-                  name: "geocode_address",
-                  description: "Convert address to coordinates",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      address: { type: "string", description: "Address to geocode" },
-                      limit: { type: "number", description: "Maximum number of results", default: 1 }
-                    },
-                    required: ["address"]
-                  }
-                },
-                {
-                  name: "reverse_geocode",
-                  description: "Convert coordinates to address",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      lat: { type: "number", description: "Latitude" },
-                      lon: { type: "number", description: "Longitude" }
-                    },
-                    required: ["lat", "lon"]
-                  }
-                },
-                {
-                  name: "get_directions",
-                  description: "Get directions between two points",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      from: { type: "string", description: "Starting address or coordinates" },
-                      to: { type: "string", description: "Destination address or coordinates" },
-                      travelMode: { type: "string", description: "Travel mode", default: "car" }
-                    },
-                    required: ["from", "to"]
-                  }
-                },
-                {
-                  name: "generate_static_map",
-                  description: "Generate static map image",
-                  inputSchema: {
-                    type: "object",
-                    properties: {
-                      center: { type: "string", description: "Center coordinates" },
-                      zoom: { type: "number", description: "Zoom level", default: 10 },
-                      width: { type: "number", description: "Image width", default: 400 },
-                      height: { type: "number", description: "Image height", default: 300 }
-                    },
-                    required: ["center"]
-                  }
+            tools: [
+              {
+                name: "tomtom_search",
+                description: "Search for places using TomTom Maps",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    query: { type: "string", description: "Search query (e.g., 'restaurants in Paris')" },
+                    location: { type: "string", description: "Location context (optional)" }
+                  },
+                  required: ["query"]
                 }
-              ]
-            },
-            id: id
+              },
+              {
+                name: "tomtom_geocode",
+                description: "Convert address to coordinates",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    address: { type: "string", description: "Address to geocode" }
+                  },
+                  required: ["address"]
+                }
+              },
+              {
+                name: "tomtom_directions",
+                description: "Get directions between two points",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    origin: { type: "string", description: "Starting point" },
+                    destination: { type: "string", description: "Destination" }
+                  },
+                  required: ["origin", "destination"]
+                }
+              },
+              {
+                name: "tomtom_reverse_geocode",
+                description: "Convert coordinates to address",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    lat: { type: "number", description: "Latitude" },
+                    lon: { type: "number", description: "Longitude" }
+                  },
+                  required: ["lat", "lon"]
+                }
+              },
+              {
+                name: "tomtom_static_map",
+                description: "Generate static map image",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    center: { type: "string", description: "Center coordinates" },
+                    zoom: { type: "number", description: "Zoom level", default: 10 },
+                    width: { type: "number", description: "Image width", default: 400 },
+                    height: { type: "number", description: "Image height", default: 300 }
+                  },
+                  required: ["center"]
+                }
+              }
+            ]
           };
           break;
           
@@ -222,16 +190,12 @@ class MistralSSEMCPServer {
           console.log('📤 Tool result:', toolResult);
           
           result = {
-            jsonrpc: "2.0",
-            result: {
-              content: [
-                {
-                  type: "text",
-                  text: toolResult
-                }
-              ]
-            },
-            id: id
+            content: [
+              {
+                type: "text",
+                text: toolResult
+              }
+            ]
           };
           console.log('📋 Final response to Le Chat via SSE:', JSON.stringify(result, null, 2));
           break;
@@ -239,32 +203,39 @@ class MistralSSEMCPServer {
         default:
           console.log('❌ Unknown method via SSE:', method);
           result = {
-            jsonrpc: "2.0",
             error: {
               code: -32601,
               message: "Method not found",
               data: `Unknown method: ${method}`
-            },
-            id: id
+            }
           };
       }
       
       // Send response via SSE format
-      console.log('📨 Sending SSE response:', JSON.stringify(result, null, 2));
-      res.write(`data: ${JSON.stringify(result)}\n\n`);
+      const response = {
+        jsonrpc: '2.0',
+        id: id,
+        result: result
+      };
+      
+      console.log('📨 Sending SSE response:', JSON.stringify(response, null, 2));
+      res.write(`data: ${JSON.stringify(response)}\n\n`);
       
     } catch (error) {
       console.error('❌ MCP Error via SSE:', error);
       console.error('❌ Error stack:', error.stack);
-      res.write(`data: ${JSON.stringify({
+      
+      const errorResponse = {
         jsonrpc: "2.0",
+        id: message.id,
         error: {
           code: -32603,
           message: "Internal error",
           data: error.message
-        },
-        id: id
-      })}\n\n`);
+        }
+      };
+      
+      res.write(`data: ${JSON.stringify(errorResponse)}\n\n`);
     }
   }
 
@@ -429,15 +400,15 @@ class MistralSSEMCPServer {
 
   async executeTool(name, args) {
     switch (name) {
-      case 'search_places':
+      case 'tomtom_search':
         return await this.searchPlaces(args);
-      case 'geocode_address':
+      case 'tomtom_geocode':
         return await this.geocodeAddress(args);
-      case 'reverse_geocode':
+      case 'tomtom_reverse_geocode':
         return await this.reverseGeocode(args);
-      case 'get_directions':
+      case 'tomtom_directions':
         return await this.getDirections(args);
-      case 'generate_static_map':
+      case 'tomtom_static_map':
         return await this.generateStaticMap(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
