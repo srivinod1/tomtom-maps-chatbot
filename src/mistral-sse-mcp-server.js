@@ -23,6 +23,18 @@ class MistralSSEMCPServer {
   }
 
   setupMiddleware() {
+    // Debug logging middleware
+    this.app.use((req, res, next) => {
+      console.log('=============================');
+      console.log('📨 Incoming Request:');
+      console.log('Method:', req.method);
+      console.log('Path:', req.path);
+      console.log('Headers:', req.headers);
+      console.log('Body:', req.body);
+      console.log('=============================');
+      next();
+    });
+
     // Enhanced CORS configuration for Mistral Le Chat
     this.app.use(cors({
       origin: true, // Allow all origins
@@ -136,6 +148,177 @@ class MistralSSEMCPServer {
         });
       }
     });
+
+    // WebSocket-style SSE: Handle MCP messages via separate POST endpoint
+    this.app.post('/message', async (req, res) => {
+      console.log('🔌 MCP message POST from:', req.headers['user-agent']);
+      console.log('📨 MCP message received:', req.body);
+      
+      if (req.body && req.body.method) {
+        const result = await this.handleMCPMessageSync(req.body);
+        
+        // Broadcast to all SSE clients
+        for (const [id, client] of this.clients) {
+          client.write(`data: ${JSON.stringify({
+            jsonrpc: '2.0',
+            id: req.body.id,
+            result: result
+          })}\n\n`);
+        }
+        
+        res.json({ success: true });
+      } else {
+        console.log('⚠️ No valid MCP message in POST body');
+        res.json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32700,
+            message: "Parse error",
+            data: "No valid MCP message found"
+          },
+          id: null
+        });
+      }
+    });
+  }
+
+  async handleMCPMessageSync(message) {
+    try {
+      const { jsonrpc, method, params, id } = message;
+      console.log('🔍 MCP Message Received (sync):', { method, params, id });
+      
+      let result;
+      
+      switch (method) {
+        case 'initialize':
+          console.log('✅ Handling initialize method (sync)');
+          result = {
+            protocolVersion: "2024-11-05",
+            capabilities: {
+              tools: {},
+              logging: {}
+            },
+            serverInfo: {
+              name: "tomtom-maps-server",
+              version: "1.0.0"
+            }
+          };
+          break;
+          
+        case 'tools/list':
+          console.log('✅ Handling tools/list method (sync)');
+          result = {
+            tools: [
+              {
+                name: "tomtom_search",
+                description: "Search for places using TomTom Maps",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    query: { type: "string", description: "Search query (e.g., 'restaurants in Paris')" },
+                    location: { type: "string", description: "Location context (optional)" }
+                  },
+                  required: ["query"]
+                }
+              },
+              {
+                name: "tomtom_geocode",
+                description: "Convert address to coordinates",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    address: { type: "string", description: "Address to geocode" }
+                  },
+                  required: ["address"]
+                }
+              },
+              {
+                name: "tomtom_directions",
+                description: "Get directions between two points",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    origin: { type: "string", description: "Starting point" },
+                    destination: { type: "string", description: "Destination" }
+                  },
+                  required: ["origin", "destination"]
+                }
+              },
+              {
+                name: "tomtom_reverse_geocode",
+                description: "Convert coordinates to address",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    lat: { type: "number", description: "Latitude" },
+                    lon: { type: "number", description: "Longitude" }
+                  },
+                  required: ["lat", "lon"]
+                }
+              },
+              {
+                name: "tomtom_static_map",
+                description: "Generate static map image",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    center: { type: "string", description: "Center coordinates" },
+                    zoom: { type: "number", description: "Zoom level", default: 10 },
+                    width: { type: "number", description: "Image width", default: 400 },
+                    height: { type: "number", description: "Image height", default: 300 }
+                  },
+                  required: ["center"]
+                }
+              }
+            ]
+          };
+          break;
+          
+        case 'tools/call':
+          console.log('🔧 Tool call received (sync):', params);
+          const { name, arguments: args } = params;
+          console.log('📞 Executing tool (sync):', name);
+          console.log('📥 Tool arguments:', args);
+          
+          const toolResult = await this.executeTool(name, args);
+          console.log('📤 Tool result:', toolResult);
+          
+          result = {
+            content: [
+              {
+                type: "text",
+                text: toolResult
+              }
+            ]
+          };
+          console.log('📋 Final response (sync):', JSON.stringify(result, null, 2));
+          break;
+          
+        default:
+          console.log('❌ Unknown method (sync):', method);
+          result = {
+            error: {
+              code: -32601,
+              message: "Method not found",
+              data: `Unknown method: ${method}`
+            }
+          };
+      }
+      
+      return result;
+      
+    } catch (error) {
+      console.error('❌ MCP Error (sync):', error);
+      console.error('❌ Error stack:', error.stack);
+      
+      return {
+        error: {
+          code: -32603,
+          message: "Internal error",
+          data: error.message
+        }
+      };
+    }
   }
 
   async handleMCPMessage(message, res) {
@@ -494,6 +677,7 @@ class MistralSSEMCPServer {
           sse: 'GET /sse - SSE connection',
           ssePost: 'POST /sse - MCP messages via SSE',
           mcp: 'POST /mcp - MCP messages via HTTP',
+          message: 'POST /message - WebSocket-style MCP messages',
           health: 'GET / - Health check'
         },
         tools: [
