@@ -83,10 +83,13 @@ class MistralSSEMCPServer {
 
   async handleMCPMessage(method, params, id, res) {
     try {
+      console.log('🔍 MCP Message Received:', { method, params, id });
+      
       let result;
       
       switch (method) {
         case 'initialize':
+          console.log('✅ Handling initialize method');
           result = {
             jsonrpc: "2.0",
             result: {
@@ -105,6 +108,7 @@ class MistralSSEMCPServer {
           break;
           
         case 'tools/list':
+          console.log('✅ Handling tools/list method');
           result = {
             jsonrpc: "2.0",
             result: {
@@ -182,8 +186,14 @@ class MistralSSEMCPServer {
           break;
           
         case 'tools/call':
+          console.log('🔧 Tool call received:', params);
           const { name, arguments: args } = params;
+          console.log('📞 Executing tool:', name);
+          console.log('📥 Tool arguments:', args);
+          
           const toolResult = await this.executeTool(name, args);
+          console.log('📤 Tool result:', toolResult);
+          
           result = {
             jsonrpc: "2.0",
             result: {
@@ -196,9 +206,11 @@ class MistralSSEMCPServer {
             },
             id: id
           };
+          console.log('📋 Final response to Le Chat:', JSON.stringify(result, null, 2));
           break;
           
         default:
+          console.log('❌ Unknown method:', method);
           result = {
             jsonrpc: "2.0",
             error: {
@@ -210,10 +222,12 @@ class MistralSSEMCPServer {
           };
       }
       
+      console.log('📨 Sending response:', JSON.stringify(result, null, 2));
       res.json(result);
       
     } catch (error) {
       console.error('❌ MCP Error:', error);
+      console.error('❌ Error stack:', error.stack);
       res.json({
         jsonrpc: "2.0",
         error: {
@@ -244,8 +258,10 @@ class MistralSSEMCPServer {
   }
 
   async searchPlaces(args) {
+    console.log('🔍 searchPlaces called with args:', args);
     const { query, lat, lon, radius = 5000, limit = 10 } = args;
     
+    console.log('🌐 Making TomTom API call...');
     const url = `https://api.tomtom.com/search/2/search/${encodeURIComponent(query)}.json`;
     const params = {
       key: this.tomtomApiKey,
@@ -253,27 +269,43 @@ class MistralSSEMCPServer {
       geobias: `point:${lat},${lon}`
     };
 
-    const response = await axios.get(url, { params });
-    
-    if (response.data && response.data.results) {
-      const places = response.data.results.map(place => ({
-        name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
-        address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
-        rating: place.poi?.rating || 0,
-        distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
-        coordinates: {
-          lat: place.position?.lat || lat,
-          lon: place.position?.lon || lon
-        }
-      }));
+    console.log('📡 API URL:', url);
+    console.log('📡 API Params:', params);
 
-      return `Found ${places.length} places for "${query}":\n\n` +
-             places.map((place, index) => 
-               `${index + 1}. **${place.name}**\n   📍 ${place.address}\n   📏 ${place.distance} km away\n`
-             ).join('\n');
+    try {
+      const response = await axios.get(url, { params });
+      console.log('✅ TomTom API response received:', response.status);
+      console.log('📊 Response data:', response.data);
+      
+      if (response.data && response.data.results) {
+        const places = response.data.results.map(place => ({
+          name: place.poi?.name || place.address?.freeformAddress || 'Unknown',
+          address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
+          rating: place.poi?.rating || 0,
+          distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
+          coordinates: {
+            lat: place.position?.lat || lat,
+            lon: place.position?.lon || lon
+          }
+        }));
+
+        const result = `Found ${places.length} places for "${query}":\n\n` +
+               places.map((place, index) => 
+                 `${index + 1}. **${place.name}**\n   📍 ${place.address}\n   📏 ${place.distance} km away\n`
+               ).join('\n');
+        
+        console.log('📤 searchPlaces result:', result);
+        return result;
+      }
+
+      const noResults = `No places found for "${query}"`;
+      console.log('📤 searchPlaces result (no results):', noResults);
+      return noResults;
+    } catch (error) {
+      console.error('❌ TomTom API error:', error.message);
+      console.error('❌ Error details:', error.response?.data);
+      throw error;
     }
-
-    return `No places found for "${query}"`;
   }
 
   async geocodeAddress(args) {
