@@ -127,14 +127,25 @@ class MistralSSEMCPServer {
       });
     });
 
-    // Alternative MCP endpoint - some clients might expect this
-    this.app.post('/mcp', (req, res) => {
+    // Alternative MCP endpoint - HTTP JSON responses (what Le Chat expects)
+    this.app.post('/mcp', async (req, res) => {
       console.log('🔌 MCP POST connection from:', req.headers['user-agent']);
       console.log('📨 MCP message from POST body:', req.body);
       
       if (req.body && req.body.method) {
         console.log('📨 Processing MCP message:', req.body.method);
-        this.handleMCPMessage(req.body, res);
+        
+        // Use the sync handler and return HTTP JSON response
+        const result = await this.handleMCPMessageSync(req.body);
+        
+        const response = {
+          jsonrpc: '2.0',
+          id: req.body.id,
+          result: result
+        };
+        
+        console.log('📨 Sending HTTP JSON response:', JSON.stringify(response, null, 2));
+        res.json(response);
       } else {
         console.log('⚠️ No valid MCP message in POST body');
         res.json({
