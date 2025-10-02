@@ -227,7 +227,7 @@ class MistralSSEMCPServer {
                   type: "object",
                   properties: {
                     query: { type: "string", description: "Search query (e.g., 'restaurants in Paris')" },
-                    location: { type: "string", description: "Location context (optional)" }
+                          location: { type: "string", description: "Specific location/address for search bias (e.g., '15 rue des Halles, Paris' or 'Times Square, New York')" }
                   },
                   required: ["query"]
                 }
@@ -366,7 +366,7 @@ class MistralSSEMCPServer {
                   type: "object",
                   properties: {
                     query: { type: "string", description: "Search query (e.g., 'restaurants in Paris')" },
-                    location: { type: "string", description: "Location context (optional)" }
+                          location: { type: "string", description: "Specific location/address for search bias (e.g., '15 rue des Halles, Paris' or 'Times Square, New York')" }
                   },
                   required: ["query"]
                 }
@@ -503,14 +503,34 @@ class MistralSSEMCPServer {
 
   async searchPlaces(args) {
     console.log('🔍 searchPlaces called with args:', args);
-    const { query, location, lat = 52.3676, lon = 4.9041, radius = 5000, limit = 10 } = args;
+    const { query, location, lat, lon, radius = 5000, limit = 10 } = args;
     
-    // If location is provided, try to geocode it first
+    let searchLat = lat || 52.3676; // Default to Amsterdam if no lat provided
+    let searchLon = lon || 4.9041;  // Default to Amsterdam if no lon provided
+    
+    // If location is provided but no explicit coordinates, try to geocode it first
     if (location && !lat && !lon) {
-      const coords = await this.geocodeLocation(location);
+      let locationToGeocode = location;
+      
+      // If location is too generic (just city name), try to extract address from query
+      if (location.length < 20 && query.includes('near') && query.includes(location)) {
+        console.log('🔍 Location seems generic, trying to extract address from query');
+        // Look for patterns like "near 15 rue des Halles, Paris" or "near 123 Main St, City"
+        const nearMatch = query.match(/near\s+([^,]+(?:,\s*[^,]+)*)/i);
+        if (nearMatch) {
+          locationToGeocode = nearMatch[1].trim();
+          console.log('📍 Extracted address from query:', locationToGeocode);
+        }
+      }
+      
+      console.log('🌍 Geocoding location:', locationToGeocode);
+      const coords = await this.geocodeLocation(locationToGeocode);
       if (coords) {
-        lat = coords.lat;
-        lon = coords.lon;
+        searchLat = coords.lat;
+        searchLon = coords.lon;
+        console.log('📍 Geocoded coordinates:', searchLat, searchLon);
+      } else {
+        console.log('⚠️ Failed to geocode location, using defaults');
       }
     }
     
@@ -519,7 +539,7 @@ class MistralSSEMCPServer {
     const params = {
       key: this.tomtomApiKey,
       limit: limit,
-      geobias: `point:${lat},${lon}`
+      geobias: `point:${searchLat},${searchLon}`
     };
 
     console.log('📡 API URL:', url);
@@ -536,10 +556,10 @@ class MistralSSEMCPServer {
           address: place.address?.freeformAddress || place.address?.formattedAddress || 'Address not available',
           rating: place.poi?.rating || 0,
           distance: place.dist ? (place.dist / 1000).toFixed(2) : 0,
-          coordinates: {
-            lat: place.position?.lat || lat,
-            lon: place.position?.lon || lon
-          }
+                coordinates: {
+                  lat: place.position?.lat || searchLat,
+                  lon: place.position?.lon || searchLon
+                }
         }));
 
         const result = `Found ${places.length} places for "${query}":\n\n` +
