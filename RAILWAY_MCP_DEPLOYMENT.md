@@ -15,9 +15,11 @@ This guide will help you deploy the TomTom MCP Server as a separate service on R
 
 1. **Service Name**: `tomtom-mcp-server`
 2. **Root Directory**: `/` (root of repository)
-3. **Build Command**: `npm install`
-4. **Start Command**: `npm run mcp-server`
+3. **Build Command**: `npm install` (Railway will auto-detect)
+4. **Start Command**: `npm run mcp-server` (override the default)
 5. **Port**: Railway will auto-assign (usually 8080)
+
+**Important**: Railway may auto-detect `npm run start:all` as the start command. You need to manually override this to `npm run mcp-server` in the Railway dashboard.
 
 ### 3. Environment Variables
 

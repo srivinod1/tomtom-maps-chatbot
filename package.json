@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/unified-server.js",
     "start:all": "concurrently \"npm run mcp-tools\" \"npm start\"",
+    "start:mcp": "npm run mcp-server",
     "dev": "nodemon src/unified-server.js",
     "enhanced": "node src/enhanced-orchestrator.js",
     "enhanced-dev": "nodemon src/enhanced-orchestrator.js",
