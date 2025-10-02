@@ -70,6 +70,8 @@ class MistralHTTPMCPServer {
       
       const { method, params, id } = req.body;
       
+      console.log('🔍 MCP Request:', { method, params, id });
+      
       // Handle different MCP methods
       switch (method) {
         case 'ping':
@@ -85,7 +87,8 @@ class MistralHTTPMCPServer {
             result: {
               protocolVersion: "2024-11-05",
               capabilities: {
-                tools: {}
+                tools: {},
+                logging: {}
               },
               serverInfo: {
                 name: "tomtom-maps-server",
@@ -95,18 +98,90 @@ class MistralHTTPMCPServer {
             id: id || 1
           });
           break;
-        default:
+        case 'tools/list':
+          // Handle tools/list at root level too
           res.json({
             jsonrpc: "2.0",
             result: {
-              protocolVersion: "2024-11-05",
-              capabilities: {
-                tools: {}
-              },
-              serverInfo: {
-                name: "tomtom-maps-server",
-                version: "1.0.0"
-              }
+              tools: [
+                {
+                  name: "search_places",
+                  description: "Search for places using TomTom API",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      query: { type: "string", description: "Search query" },
+                      lat: { type: "number", description: "Latitude" },
+                      lon: { type: "number", description: "Longitude" },
+                      radius: { type: "number", description: "Search radius in meters", default: 5000 },
+                      limit: { type: "number", description: "Maximum number of results", default: 10 }
+                    },
+                    required: ["query", "lat", "lon"]
+                  }
+                },
+                {
+                  name: "geocode_address",
+                  description: "Convert address to coordinates",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      address: { type: "string", description: "Address to geocode" },
+                      limit: { type: "number", description: "Maximum number of results", default: 1 }
+                    },
+                    required: ["address"]
+                  }
+                },
+                {
+                  name: "reverse_geocode",
+                  description: "Convert coordinates to address",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      lat: { type: "number", description: "Latitude" },
+                      lon: { type: "number", description: "Longitude" }
+                    },
+                    required: ["lat", "lon"]
+                  }
+                },
+                {
+                  name: "get_directions",
+                  description: "Get directions between two points",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      from: { type: "string", description: "Starting address or coordinates" },
+                      to: { type: "string", description: "Destination address or coordinates" },
+                      travelMode: { type: "string", description: "Travel mode", default: "car" }
+                    },
+                    required: ["from", "to"]
+                  }
+                },
+                {
+                  name: "generate_static_map",
+                  description: "Generate static map image",
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      center: { type: "string", description: "Center coordinates" },
+                      zoom: { type: "number", description: "Zoom level", default: 10 },
+                      width: { type: "number", description: "Image width", default: 400 },
+                      height: { type: "number", description: "Image height", default: 300 }
+                    },
+                    required: ["center"]
+                  }
+                }
+              ]
+            },
+            id: id || 1
+          });
+          break;
+        default:
+          res.json({
+            jsonrpc: "2.0",
+            error: {
+              code: -32601,
+              message: "Method not found",
+              data: `Unknown method: ${method}`
             },
             id: id || 1
           });
@@ -261,7 +336,38 @@ class MistralHTTPMCPServer {
         version: '1.0.0',
         timestamp: new Date().toISOString(),
         protocol: 'MCP over HTTP',
-        provider: 'Mistral Le Chat'
+        provider: 'Mistral Le Chat',
+        mcpVersion: '2024-11-05',
+        capabilities: ['tools', 'logging'],
+        toolsCount: 5
+      });
+    });
+
+    // MCP Status endpoint
+    this.app.get('/mcp-status', (req, res) => {
+      res.header('Access-Control-Allow-Origin', '*');
+      res.json({
+        jsonrpc: "2.0",
+        result: {
+          status: "ready",
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            tools: {},
+            logging: {}
+          },
+          serverInfo: {
+            name: "tomtom-maps-server",
+            version: "1.0.0"
+          },
+          tools: [
+            "search_places",
+            "geocode_address", 
+            "reverse_geocode",
+            "get_directions",
+            "generate_static_map"
+          ]
+        },
+        id: 1
       });
     });
 
