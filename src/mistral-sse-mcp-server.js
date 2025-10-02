@@ -113,10 +113,10 @@ class MistralSSEMCPServer {
             tools: {},
             logging: {}
           },
-          serverInfo: {
-            name: "tomtom-maps-server",
-            version: "1.0.0"
-          }
+                 serverInfo: {
+                   name: "tomtom-maps-server",
+                   version: "1.0.0-mcp"
+                 }
         },
         id: 1
       })}\n\n`);
@@ -209,10 +209,10 @@ class MistralSSEMCPServer {
               tools: {},
               logging: {}
             },
-            serverInfo: {
-              name: "tomtom-maps-server",
-              version: "1.0.0"
-            }
+                 serverInfo: {
+                   name: "tomtom-maps-server",
+                   version: "1.0.0-mcp"
+                 }
           };
           break;
           
@@ -348,10 +348,10 @@ class MistralSSEMCPServer {
               tools: {},
               logging: {}
             },
-            serverInfo: {
-              name: "tomtom-maps-server",
-              version: "1.0.0"
-            }
+                 serverInfo: {
+                   name: "tomtom-maps-server",
+                   version: "1.0.0-mcp"
+                 }
           };
           break;
           
@@ -678,9 +678,9 @@ class MistralSSEMCPServer {
     // Health check endpoint
     this.app.get('/', (req, res) => {
       res.json({
-        service: 'TomTom MCP Server with SSE for Mistral Le Chat',
-        status: 'healthy',
-        version: '1.0.0',
+               service: 'TomTom MCP Server V1.0.0-mcp for Mistral Le Chat',
+               status: 'healthy',
+               version: '1.0.0-mcp',
         timestamp: new Date().toISOString(),
         protocol: 'MCP over SSE',
         provider: 'Mistral Le Chat',
@@ -722,10 +722,11 @@ class MistralSSEMCPServer {
       console.log(`❤️ Health Check: http://localhost:${this.port}/`);
       console.log('=== MISTRAL LE CHAT MCP SERVER WITH SSE READY ===');
       console.log('');
-      console.log('📋 For Mistral Le Chat Configuration:');
-      console.log('1. Use this URL as your MCP server: https://tomtom-maps-chatbot-production.up.railway.app/sse');
-      console.log('2. The server implements MCP protocol over Server-Sent Events');
-      console.log('3. Available tools: search_places, geocode_address, reverse_geocode, get_directions, generate_static_map');
+             console.log('📋 For Mistral Le Chat Configuration:');
+             console.log('1. Use this URL as your MCP server: https://tomtom-maps-chatbot-production.up.railway.app/mcp');
+             console.log('2. The server implements MCP protocol over HTTP JSON-RPC');
+             console.log('3. Available tools: tomtom_search, tomtom_geocode, tomtom_directions, tomtom_reverse_geocode, tomtom_static_map');
+             console.log('4. Version: 1.0.0-mcp (Production Ready)');
     });
   }
 }
