@@ -836,6 +836,8 @@ class MistralSSEMCPServer {
         }
         
         // Speed reduction percentage (100 - relativeSpeed)
+        // Debug: Check relativeSpeed value
+        console.log(`🔍 Speed debug: relativeSpeed=${segment.relativeSpeed}, currentSpeed=${segment.currentSpeed}, typicalSpeed=${segment.typicalSpeed}`);
         const speedReductionPercent = (100 - segment.relativeSpeed).toFixed(1);
         result += `   - Current Speed: ${segment.currentSpeed} km/h\n`;
         result += `   - Typical Speed: ${segment.typicalSpeed} km/h\n`;
