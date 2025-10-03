@@ -151,7 +151,7 @@ class MistralSSEMCPServer {
           res.json(response);
         } else {
           console.log('📨 Notification received, no response needed');
-          res.status(200).end(); // Send empty 200 response for notifications
+          res.status(204).end(); // Send 204 No Content for notifications
         }
       } else {
         console.log('⚠️ No valid MCP message in POST body');
@@ -204,6 +204,12 @@ class MistralSSEMCPServer {
     try {
       const { jsonrpc, method, params, id } = message;
       console.log('🔍 MCP Message Received (sync):', { method, params, id });
+      
+      // Handle notifications (no response needed, no id field)
+      if (method && method.startsWith('notifications/')) {
+        console.log(`✅ Acknowledged notification: ${method}`);
+        return null; // Notifications don't require responses
+      }
       
       let result;
       
@@ -324,11 +330,6 @@ class MistralSSEMCPServer {
           console.log('📋 Final response (sync):', JSON.stringify(result, null, 2));
           break;
           
-        case 'notifications/initialized':
-          console.log('✅ Handling notifications/initialized method (sync)');
-          result = null; // Notifications don't require a response
-          break;
-          
         default:
           console.log('❌ Unknown method (sync):', method);
           result = {
@@ -360,6 +361,12 @@ class MistralSSEMCPServer {
     try {
       const { jsonrpc, method, params, id } = message;
       console.log('🔍 MCP Message Received via SSE:', { method, params, id });
+      
+      // Handle notifications (no response needed, no id field)
+      if (method && method.startsWith('notifications/')) {
+        console.log(`✅ Acknowledged notification via SSE: ${method}`);
+        return; // Notifications don't require responses
+      }
       
       let result;
       
@@ -478,11 +485,6 @@ class MistralSSEMCPServer {
             ]
           };
           console.log('📋 Final response to Le Chat via SSE:', JSON.stringify(result, null, 2));
-          break;
-          
-        case 'notifications/initialized':
-          console.log('✅ Handling notifications/initialized method via SSE');
-          result = null; // Notifications don't require a response
           break;
           
         default:
