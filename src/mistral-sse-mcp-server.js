@@ -795,11 +795,11 @@ class MistralSSEMCPServer {
           const isLongEnough = segmentLengthMeters > 100;
           
           // Reduced logging to avoid Railway rate limits
-          if (hasDelay && isLongEnough) {
+          if (hasDelay) {
             console.log(`✅ Bottleneck segment: ${segmentLengthMeters}m, speed reduction: ${100 - seg.relativeSpeed}%`);
           }
           
-          return hasDelay && isLongEnough;
+          return hasDelay; // Temporarily remove 100m filter to see all delayed segments
         })
         .sort((a, b) => (100 - a.relativeSpeed) - (100 - b.relativeSpeed)) // Sort by speed reduction percentage (descending)
         .slice(0, 3);
