@@ -1058,7 +1058,7 @@ class MistralSSEMCPServer {
              console.log('📋 For Mistral Le Chat Configuration:');
              console.log('1. Use this URL as your MCP server: https://tomtom-maps-chatbot-production.up.railway.app/mcp');
              console.log('2. The server implements MCP protocol over HTTP JSON-RPC');
-             console.log('3. Available tools: tomtom_search, tomtom_geocode, tomtom_directions, tomtom_reverse_geocode, tomtom_monitor_route, tomtom_static_map');
+             console.log('3. Available tools: tomtom_search, tomtom_geocode, tomtom_directions, tomtom_reverse_geocode, tomtom_monitor_route, tomtom_static_map (V2.0.1)');
              console.log('4. Version: 1.0.0-mcp (Production Ready)');
     });
   }
