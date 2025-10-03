@@ -792,8 +792,8 @@ class MistralSSEMCPServer {
           if (seg.segmentLengthMeters) {
             segmentLengthMeters = seg.segmentLengthMeters;
           } else if (seg.segmentLength) {
-            // segmentLength is in kilometers, convert to meters
-            segmentLengthMeters = seg.segmentLength * 1000;
+            // segmentLength is already in meters (from TomTom API)
+            segmentLengthMeters = seg.segmentLength;
           } else if (seg.length) {
             segmentLengthMeters = seg.length;
           }
@@ -846,13 +846,16 @@ class MistralSSEMCPServer {
         
                // Length in meters
                let segmentLengthMeters = 0;
+               console.log(`🔍 Display debug: segmentLength=${segment.segmentLength}, segmentLengthMeters=${segment.segmentLengthMeters}, length=${segment.length}`);
                if (segment.segmentLengthMeters) {
                  segmentLengthMeters = segment.segmentLengthMeters;
                } else if (segment.segmentLength) {
-                 segmentLengthMeters = segment.segmentLength * 1000;
+                 // segmentLength is already in meters (from TomTom API)
+                 segmentLengthMeters = segment.segmentLength;
                } else if (segment.length) {
                  segmentLengthMeters = segment.length;
                }
+               console.log(`🔍 Display debug: final segmentLengthMeters=${segmentLengthMeters}`);
                
                if (segmentLengthMeters > 0) {
                  if (segmentLengthMeters >= 1000) {
