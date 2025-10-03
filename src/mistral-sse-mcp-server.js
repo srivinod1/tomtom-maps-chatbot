@@ -15,6 +15,7 @@ class MistralSSEMCPServer {
     this.app = express();
     this.port = process.env.PORT || 3003;
     this.tomtomApiKey = process.env.TOMTOM_API_KEY;
+    this.tomtomRouteMonitoringApiKey = process.env.TOMTOM_ROUTE_MONITORING_API_KEY || this.tomtomApiKey;
     this.clients = new Map(); // Store SSE connections
     
     this.setupMiddleware();
@@ -268,6 +269,18 @@ class MistralSSEMCPServer {
                 }
               },
               {
+                name: "tomtom_monitor_route",
+                description: "Monitor real-time traffic conditions on a specific route",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    routeId: { type: "string", description: "Route ID to monitor (e.g., '81390')" },
+                    routeDescription: { type: "string", description: "Route description (e.g., 'Barcelona airport to smart city event route')" }
+                  },
+                  required: []
+                }
+              },
+              {
                 name: "tomtom_static_map",
                 description: "Generate static map image",
                 inputSchema: {
@@ -407,6 +420,18 @@ class MistralSSEMCPServer {
                 }
               },
               {
+                name: "tomtom_monitor_route",
+                description: "Monitor real-time traffic conditions on a specific route",
+                inputSchema: {
+                  type: "object",
+                  properties: {
+                    routeId: { type: "string", description: "Route ID to monitor (e.g., '81390')" },
+                    routeDescription: { type: "string", description: "Route description (e.g., 'Barcelona airport to smart city event route')" }
+                  },
+                  required: []
+                }
+              },
+              {
                 name: "tomtom_static_map",
                 description: "Generate static map image",
                 inputSchema: {
@@ -494,6 +519,8 @@ class MistralSSEMCPServer {
         return await this.reverseGeocode(args);
       case 'tomtom_directions':
         return await this.getDirections(args);
+      case 'tomtom_monitor_route':
+        return await this.monitorRoute(args);
       case 'tomtom_static_map':
         return await this.generateStaticMap(args);
       default:
@@ -650,11 +677,228 @@ class MistralSSEMCPServer {
 
       return `🚗 **Directions from ${origin} to ${destination}**\n\n` +
              `📏 **Distance:** ${distance} km\n` +
-             `⏱️ **Duration:** ${duration} minutes\n` +
-             `🚗 **Travel Mode:** ${travelMode}`;
+             `⏱️ **Duration:** ${duration} minutes (with real-time traffic)\n` +
+             `🚗 **Travel Mode:** ${travelMode}\n` +
+             `🚦 **Route Type:** Fastest route with live traffic data`;
     }
 
     return `Could not calculate route from ${origin} to ${destination}`;
+  }
+
+  async monitorRoute(args) {
+    const { routeId, routeDescription } = args;
+    
+    console.log('🔍 Monitoring route:', routeId || routeDescription);
+    
+    // If routeDescription is provided, try to find the route ID
+    let actualRouteId = routeId;
+    if (routeDescription && !routeId) {
+      actualRouteId = await this.findRouteId(routeDescription);
+      if (!actualRouteId) {
+        return `❌ Could not find a route matching: "${routeDescription}". Please provide a specific Route ID or try a different route description.`;
+      }
+      console.log('📍 Found route ID:', actualRouteId, 'for description:', routeDescription);
+    }
+    
+    try {
+      const url = `https://api.tomtom.com/routemonitoring/3/routes/${actualRouteId}/details`;
+      const params = {
+        key: this.tomtomRouteMonitoringApiKey
+      };
+      
+      const response = await axios.get(url, { params });
+      const data = response.data;
+      
+      if (!data || !data.routeId) {
+        return `No route data found for route ID: ${routeId}`;
+      }
+      
+      // Convert to more readable units for overall stats
+      const totalLength = (data.routeLength / 1000).toFixed(1);
+      const currentTravelTime = Math.round(data.travelTime / 60); // Total time including delays
+      const typicalTravelTime = Math.round(data.typicalTravelTime / 60); // Free-flow time
+      const delayTime = Math.round(data.delayTime / 60);
+      const delayPercentage = ((data.delayTime / data.typicalTravelTime) * 100).toFixed(1);
+      
+      // Determine traffic level
+      let trafficLevel;
+      if (delayPercentage < 10) trafficLevel = 'Light';
+      else if (delayPercentage < 25) trafficLevel = 'Moderate';
+      else if (delayPercentage < 50) trafficLevel = 'Heavy';
+      else trafficLevel = 'Severe';
+      
+      // Build response
+      let result = `🚦 **Route Monitoring Report - Route ID: ${actualRouteId}**\n`;
+      if (data.routeName) {
+        result += `📍 **Route:** ${data.routeName}\n`;
+      }
+      result += `\n`;
+      
+      result += `📊 **Overall Route Statistics:**\n`;
+      result += `- Total Distance: ${totalLength} km\n`;
+      result += `- Current Travel Time: ${currentTravelTime} minutes (with delays)\n`;
+      result += `- Typical Travel Time: ${typicalTravelTime} minutes (free-flow)\n`;
+      result += `- Total Delay: ${delayTime} minutes (${delayPercentage}%)\n`;
+      result += `- Traffic Level: ${trafficLevel}\n`;
+      result += `- Route Status: ${data.routeStatus}\n`;
+      result += `- Route Confidence: ${data.routeConfidence}%\n\n`;
+      
+      // Find segments with delay and sort by delay
+      const segments = data.detailedSegments || [];
+      
+      const delayedSegments = segments
+        .filter(seg => seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed)
+        .sort((a, b) => (b.typicalSpeed - b.averageSpeed) - (a.typicalSpeed - a.averageSpeed))
+        .slice(0, 3);
+      
+      if (delayedSegments.length > 0) {
+        result += `🚧 **Top ${delayedSegments.length} Bottleneck Segments:**\n\n`;
+        
+      // Get street names for each bottleneck segment
+      for (let i = 0; i < delayedSegments.length; i++) {
+        const segment = delayedSegments[i];
+        
+        // Extract coordinates from shape array (use first point)
+        let segmentLocation = '';
+        let coords = null;
+        if (segment.shape && segment.shape.length > 0) {
+          coords = segment.shape[0];
+          segmentLocation = `at ${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`;
+        } else {
+          segmentLocation = segment.segmentIdStr || 'unknown location';
+        }
+        
+        result += `${i + 1}. **Segment ${segmentLocation}**\n`;
+        
+        // Get street name via reverse geocoding
+        if (coords) {
+          try {
+            const streetName = await this.getStreetName(coords.latitude, coords.longitude);
+            if (streetName) {
+              result += `   📍 **Location:** ${streetName}\n`;
+            }
+          } catch (error) {
+            console.log('Could not get street name for segment:', error.message);
+          }
+        }
+        
+        // Speed difference
+        const speedDiff = (segment.typicalSpeed - segment.averageSpeed).toFixed(1);
+        result += `   - Current Speed: ${segment.currentSpeed} km/h\n`;
+        result += `   - Typical Speed: ${segment.typicalSpeed} km/h\n`;
+        result += `   - Speed Reduction: ${speedDiff} km/h\n`;
+        
+        // Length in km
+        if (segment.segmentLength !== undefined) {
+          const segmentLength = (segment.segmentLength / 1000).toFixed(2);
+          result += `   - Length: ${segmentLength} km\n`;
+        }
+        
+        // Confidence
+        if (segment.confidence !== undefined) {
+          result += `   - Confidence: ${segment.confidence}%\n`;
+        }
+        
+        result += `\n`;
+      }
+      } else {
+        result += `✅ **No significant delays detected on this route.**\n\n`;
+      }
+      
+      return result;
+      
+    } catch (error) {
+      console.error('Route monitoring error:', error.message);
+      if (error.response) {
+        console.error('API error details:', error.response.data);
+      }
+      
+      if (error.response?.status === 404) {
+        return `Route ID ${routeId} not found. Please verify the route ID is correct.`;
+      }
+      
+      throw new Error(`Failed to monitor route: ${error.message}`);
+    }
+  }
+
+  // Helper method to find route ID from description
+  async findRouteId(routeDescription) {
+    try {
+      // Known routes with their names and IDs
+      // In a real implementation, you might want to use TomTom's route search API
+      const knownRoutes = [
+        { id: '81390', name: 'Barcelona airport - Smarty City Event' }
+        // Add more routes as they become available
+      ];
+      
+      const normalizedDescription = routeDescription.toLowerCase()
+        .replace(/[^\w\s]/g, '') // Remove punctuation
+        .replace(/\s+/g, ' ') // Normalize spaces
+        .trim();
+      
+      // Extract key terms from the description
+      const keywords = normalizedDescription.split(' ').filter(word => 
+        word.length > 2 && 
+        !['the', 'and', 'to', 'from', 'route', 'show', 'me', 'bottlenecks', 'on'].includes(word)
+      );
+      
+      console.log('🔍 Searching for route with keywords:', keywords);
+      
+      // Try to find matching routes
+      for (const route of knownRoutes) {
+        const routeName = route.name.toLowerCase();
+        
+        // Check if all keywords are present in the route name
+        const allKeywordsMatch = keywords.every(keyword => 
+          routeName.includes(keyword)
+        );
+        
+        if (allKeywordsMatch && keywords.length > 0) {
+          console.log('✅ Found matching route:', route.name, 'for description:', routeDescription);
+          return route.id;
+        }
+        
+        // Also try partial matches for flexibility
+        const anyKeywordMatch = keywords.some(keyword => 
+          routeName.includes(keyword)
+        );
+        
+        if (anyKeywordMatch && keywords.length <= 2) {
+          console.log('✅ Found partial matching route:', route.name, 'for description:', routeDescription);
+          return route.id;
+        }
+      }
+      
+      console.log('❌ No matching route found for:', routeDescription);
+      return null;
+    } catch (error) {
+      console.log('Route search error:', error.message);
+      return null;
+    }
+  }
+
+  // Helper method to get street name from coordinates
+  async getStreetName(lat, lon) {
+    try {
+      const url = `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lon}.json`;
+      const params = {
+        key: this.tomtomApiKey,
+        language: 'en-US'
+      };
+      
+      const response = await axios.get(url, { params });
+      const data = response.data;
+      
+      if (data.addresses && data.addresses.length > 0) {
+        const address = data.addresses[0].address;
+        return address.freeformAddress || `${address.streetName || 'Unknown Street'}, ${address.municipality || 'Unknown City'}`;
+      }
+      
+      return null;
+    } catch (error) {
+      console.log('Reverse geocoding error:', error.message);
+      return null;
+    }
   }
 
   async generateStaticMap(args) {
@@ -745,7 +989,7 @@ class MistralSSEMCPServer {
              console.log('📋 For Mistral Le Chat Configuration:');
              console.log('1. Use this URL as your MCP server: https://tomtom-maps-chatbot-production.up.railway.app/mcp');
              console.log('2. The server implements MCP protocol over HTTP JSON-RPC');
-             console.log('3. Available tools: tomtom_search, tomtom_geocode, tomtom_directions, tomtom_reverse_geocode, tomtom_static_map');
+             console.log('3. Available tools: tomtom_search, tomtom_geocode, tomtom_directions, tomtom_reverse_geocode, tomtom_monitor_route, tomtom_static_map');
              console.log('4. Version: 1.0.0-mcp (Production Ready)');
     });
   }
