@@ -772,8 +772,8 @@ class MistralSSEMCPServer {
       // Filter segments: only include those with delays AND length > 100 meters
       const delayedSegments = segments
         .filter(seg => {
-          // Check if segment has traffic delay
-          const hasDelay = seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed;
+          // Check if segment has traffic delay (current speed < typical speed)
+          const hasDelay = seg.currentSpeed && seg.typicalSpeed && seg.currentSpeed < seg.typicalSpeed;
           
           // Debug: Log the actual segment structure to understand the field names
           console.log(`🔍 Segment debug:`, {
@@ -781,6 +781,7 @@ class MistralSSEMCPServer {
             segmentLength: seg.segmentLength,
             segmentLengthMeters: seg.segmentLengthMeters,
             length: seg.length,
+            currentSpeed: seg.currentSpeed,
             averageSpeed: seg.averageSpeed,
             typicalSpeed: seg.typicalSpeed,
             hasDelay: hasDelay
@@ -804,7 +805,7 @@ class MistralSSEMCPServer {
           
           return hasDelay && isLongEnough;
         })
-        .sort((a, b) => (b.typicalSpeed - b.averageSpeed) - (a.typicalSpeed - a.averageSpeed))
+        .sort((a, b) => (100 - a.relativeSpeed) - (100 - b.relativeSpeed)) // Sort by speed reduction percentage (descending)
         .slice(0, 3);
       
       if (delayedSegments.length > 0) {
@@ -838,11 +839,11 @@ class MistralSSEMCPServer {
           }
         }
         
-        // Speed difference
-        const speedDiff = (segment.typicalSpeed - segment.averageSpeed).toFixed(1);
+        // Speed reduction percentage (100 - relativeSpeed)
+        const speedReductionPercent = (100 - segment.relativeSpeed).toFixed(1);
         result += `   - Current Speed: ${segment.currentSpeed} km/h\n`;
         result += `   - Typical Speed: ${segment.typicalSpeed} km/h\n`;
-        result += `   - Speed Reduction: ${speedDiff} km/h\n`;
+        result += `   - Speed Reduction: ${speedReductionPercent}%\n`;
         
                // Length in meters
                let segmentLengthMeters = 0;
