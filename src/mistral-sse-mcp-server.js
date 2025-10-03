@@ -799,7 +799,7 @@ class MistralSSEMCPServer {
             console.log(`✅ Bottleneck segment: ${segmentLengthMeters}m, speed reduction: ${100 - seg.relativeSpeed}%`);
           }
           
-          return hasDelay; // Temporarily remove 100m filter to see all delayed segments
+          return hasDelay && isLongEnough; // Restore 100m filter
         })
         .sort((a, b) => (100 - a.relativeSpeed) - (100 - b.relativeSpeed)) // Sort by speed reduction percentage (descending)
         .slice(0, 3);
