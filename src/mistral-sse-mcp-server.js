@@ -139,14 +139,20 @@ class MistralSSEMCPServer {
         // Use the sync handler and return HTTP JSON response
         const result = await this.handleMCPMessageSync(req.body);
         
-        const response = {
-          jsonrpc: '2.0',
-          id: req.body.id,
-          result: result
-        };
-        
-        console.log('📨 Sending HTTP JSON response:', JSON.stringify(response, null, 2));
-        res.json(response);
+        // Only send response if result is not null (notifications don't need responses)
+        if (result !== null) {
+          const response = {
+            jsonrpc: '2.0',
+            id: req.body.id,
+            result: result
+          };
+          
+          console.log('📨 Sending HTTP JSON response:', JSON.stringify(response, null, 2));
+          res.json(response);
+        } else {
+          console.log('📨 Notification received, no response needed');
+          res.status(200).end(); // Send empty 200 response for notifications
+        }
       } else {
         console.log('⚠️ No valid MCP message in POST body');
         res.json({
@@ -318,6 +324,11 @@ class MistralSSEMCPServer {
           console.log('📋 Final response (sync):', JSON.stringify(result, null, 2));
           break;
           
+        case 'notifications/initialized':
+          console.log('✅ Handling notifications/initialized method (sync)');
+          result = null; // Notifications don't require a response
+          break;
+          
         default:
           console.log('❌ Unknown method (sync):', method);
           result = {
@@ -469,6 +480,11 @@ class MistralSSEMCPServer {
           console.log('📋 Final response to Le Chat via SSE:', JSON.stringify(result, null, 2));
           break;
           
+        case 'notifications/initialized':
+          console.log('✅ Handling notifications/initialized method via SSE');
+          result = null; // Notifications don't require a response
+          break;
+          
         default:
           console.log('❌ Unknown method via SSE:', method);
           result = {
@@ -480,15 +496,19 @@ class MistralSSEMCPServer {
           };
       }
       
-      // Send response via SSE format
-      const response = {
-        jsonrpc: '2.0',
-        id: id,
-        result: result
-      };
-      
-      console.log('📨 Sending SSE response:', JSON.stringify(response, null, 2));
-      res.write(`data: ${JSON.stringify(response)}\n\n`);
+      // Send response via SSE format (only if result is not null)
+      if (result !== null) {
+        const response = {
+          jsonrpc: '2.0',
+          id: id,
+          result: result
+        };
+        
+        console.log('📨 Sending SSE response:', JSON.stringify(response, null, 2));
+        res.write(`data: ${JSON.stringify(response)}\n\n`);
+      } else {
+        console.log('📨 Notification received, no response needed');
+      }
       
     } catch (error) {
       console.error('❌ MCP Error via SSE:', error);
