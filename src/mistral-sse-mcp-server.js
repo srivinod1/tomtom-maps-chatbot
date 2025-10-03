@@ -770,7 +770,12 @@ class MistralSSEMCPServer {
       const segments = data.detailedSegments || [];
       
       const delayedSegments = segments
-        .filter(seg => seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed && seg.segmentLength > 0.1) // Only segments > 100 meters (0.1 km)
+        .filter(seg => {
+          const hasDelay = seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed;
+          const isLongEnough = seg.segmentLength > 0.1;
+          console.log(`Segment: length=${seg.segmentLength}km, hasDelay=${hasDelay}, isLongEnough=${isLongEnough}`);
+          return hasDelay && isLongEnough;
+        })
         .sort((a, b) => (b.typicalSpeed - b.averageSpeed) - (a.typicalSpeed - a.averageSpeed))
         .slice(0, 3);
       
