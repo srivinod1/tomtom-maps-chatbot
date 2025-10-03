@@ -801,7 +801,7 @@ class MistralSSEMCPServer {
           
           return hasDelay && isLongEnough; // Restore 100m filter
         })
-        .sort((a, b) => (100 - a.relativeSpeed) - (100 - b.relativeSpeed)) // Sort by speed reduction percentage (descending)
+        .sort((a, b) => (b.typicalSpeed - b.currentSpeed) - (a.typicalSpeed - a.currentSpeed)) // Sort by speed reduction (descending)
         .slice(0, 3);
       
       if (delayedSegments.length > 0) {
@@ -838,10 +838,10 @@ class MistralSSEMCPServer {
         // Speed reduction percentage (100 - relativeSpeed)
         // Debug: Check relativeSpeed value
         console.log(`🔍 Speed debug: relativeSpeed=${segment.relativeSpeed}, currentSpeed=${segment.currentSpeed}, typicalSpeed=${segment.typicalSpeed}`);
-        const speedReductionPercent = (100 - segment.relativeSpeed).toFixed(1);
+        const speedDiff = (segment.typicalSpeed - segment.currentSpeed).toFixed(1);
         result += `   - Current Speed: ${segment.currentSpeed} km/h\n`;
         result += `   - Typical Speed: ${segment.typicalSpeed} km/h\n`;
-        result += `   - Speed Reduction: ${speedReductionPercent}%\n`;
+        result += `   - Speed Reduction: ${speedDiff} km/h\n`;
         
                // Length in meters
                let segmentLengthMeters = 0;
