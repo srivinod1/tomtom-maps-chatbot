@@ -775,17 +775,10 @@ class MistralSSEMCPServer {
           // Check if segment has traffic delay (current speed < typical speed)
           const hasDelay = seg.currentSpeed && seg.typicalSpeed && seg.currentSpeed < seg.typicalSpeed;
           
-          // Debug: Log the actual segment structure to understand the field names
-          console.log(`🔍 Segment debug:`, {
-            segmentId: seg.segmentId,
-            segmentLength: seg.segmentLength,
-            segmentLengthMeters: seg.segmentLengthMeters,
-            length: seg.length,
-            currentSpeed: seg.currentSpeed,
-            averageSpeed: seg.averageSpeed,
-            typicalSpeed: seg.typicalSpeed,
-            hasDelay: hasDelay
-          });
+          // Debug: Log the actual segment structure to understand the field names (reduced logging)
+          if (seg.segmentLength < 0.1) { // Only log short segments
+            console.log(`🔍 Short segment: length=${seg.segmentLength}m, currentSpeed=${seg.currentSpeed}, typicalSpeed=${seg.typicalSpeed}`);
+          }
           
           // Check if segment is longer than 100 meters
           // Try different possible field names for length
@@ -801,7 +794,10 @@ class MistralSSEMCPServer {
           
           const isLongEnough = segmentLengthMeters > 100;
           
-          console.log(`🔍 Segment filter: length=${segmentLengthMeters}m, hasDelay=${hasDelay}, isLongEnough=${isLongEnough}, PASS=${hasDelay && isLongEnough}`);
+          // Reduced logging to avoid Railway rate limits
+          if (hasDelay && isLongEnough) {
+            console.log(`✅ Bottleneck segment: ${segmentLengthMeters}m, speed reduction: ${100 - seg.relativeSpeed}%`);
+          }
           
           return hasDelay && isLongEnough;
         })
@@ -847,7 +843,6 @@ class MistralSSEMCPServer {
         
                // Length in meters
                let segmentLengthMeters = 0;
-               console.log(`🔍 Display debug: segmentLength=${segment.segmentLength}, segmentLengthMeters=${segment.segmentLengthMeters}, length=${segment.length}`);
                if (segment.segmentLengthMeters) {
                  segmentLengthMeters = segment.segmentLengthMeters;
                } else if (segment.segmentLength) {
@@ -856,7 +851,6 @@ class MistralSSEMCPServer {
                } else if (segment.length) {
                  segmentLengthMeters = segment.length;
                }
-               console.log(`🔍 Display debug: final segmentLengthMeters=${segmentLengthMeters}`);
                
                if (segmentLengthMeters > 0) {
                  if (segmentLengthMeters >= 1000) {
