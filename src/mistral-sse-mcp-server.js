@@ -766,10 +766,11 @@ class MistralSSEMCPServer {
       result += `- Route Confidence: ${data.routeConfidence}%\n\n`;
       
       // Find segments with delay and sort by delay
+      // Only consider segments > 100 meters for meaningful bottleneck analysis
       const segments = data.detailedSegments || [];
       
       const delayedSegments = segments
-        .filter(seg => seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed)
+        .filter(seg => seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed && seg.segmentLength > 100000) // Only segments > 100 meters
         .sort((a, b) => (b.typicalSpeed - b.averageSpeed) - (a.typicalSpeed - a.averageSpeed))
         .slice(0, 3);
       
@@ -824,7 +825,7 @@ class MistralSSEMCPServer {
         result += `\n`;
       }
       } else {
-        result += `✅ **No significant delays detected on this route.**\n\n`;
+        result += `✅ **No significant delays detected on this route (considering segments > 100m).**\n\n`;
       }
       
       return result;
