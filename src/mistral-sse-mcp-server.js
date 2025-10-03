@@ -775,11 +775,32 @@ class MistralSSEMCPServer {
           // Check if segment has traffic delay
           const hasDelay = seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed;
           
-          // Check if segment is longer than 100 meters (0.1 km)
-          // segmentLength is in kilometers in the API response
-          const isLongEnough = seg.segmentLength && seg.segmentLength > 0.1;
+          // Debug: Log the actual segment structure to understand the field names
+          console.log(`🔍 Segment debug:`, {
+            segmentId: seg.segmentId,
+            segmentLength: seg.segmentLength,
+            segmentLengthMeters: seg.segmentLengthMeters,
+            length: seg.length,
+            averageSpeed: seg.averageSpeed,
+            typicalSpeed: seg.typicalSpeed,
+            hasDelay: hasDelay
+          });
           
-          console.log(`🔍 Segment filter: length=${seg.segmentLength}km, hasDelay=${hasDelay}, isLongEnough=${isLongEnough}, PASS=${hasDelay && isLongEnough}`);
+          // Check if segment is longer than 100 meters
+          // Try different possible field names for length
+          let segmentLengthMeters = 0;
+          if (seg.segmentLengthMeters) {
+            segmentLengthMeters = seg.segmentLengthMeters;
+          } else if (seg.segmentLength) {
+            // If segmentLength is in km, convert to meters
+            segmentLengthMeters = seg.segmentLength * 1000;
+          } else if (seg.length) {
+            segmentLengthMeters = seg.length;
+          }
+          
+          const isLongEnough = segmentLengthMeters > 100;
+          
+          console.log(`🔍 Segment filter: length=${segmentLengthMeters}m, hasDelay=${hasDelay}, isLongEnough=${isLongEnough}, PASS=${hasDelay && isLongEnough}`);
           
           return hasDelay && isLongEnough;
         })
@@ -823,11 +844,24 @@ class MistralSSEMCPServer {
         result += `   - Typical Speed: ${segment.typicalSpeed} km/h\n`;
         result += `   - Speed Reduction: ${speedDiff} km/h\n`;
         
-        // Length in km
-        if (segment.segmentLength !== undefined) {
-          const segmentLength = (segment.segmentLength / 1000).toFixed(2);
-          result += `   - Length: ${segmentLength} km\n`;
-        }
+               // Length in meters
+               let segmentLengthMeters = 0;
+               if (segment.segmentLengthMeters) {
+                 segmentLengthMeters = segment.segmentLengthMeters;
+               } else if (segment.segmentLength) {
+                 segmentLengthMeters = segment.segmentLength * 1000;
+               } else if (segment.length) {
+                 segmentLengthMeters = segment.length;
+               }
+               
+               if (segmentLengthMeters > 0) {
+                 if (segmentLengthMeters >= 1000) {
+                   const segmentLengthKm = (segmentLengthMeters / 1000).toFixed(2);
+                   result += `   - Length: ${segmentLengthKm} km (${segmentLengthMeters}m)\n`;
+                 } else {
+                   result += `   - Length: ${segmentLengthMeters}m\n`;
+                 }
+               }
         
         // Confidence
         if (segment.confidence !== undefined) {
