@@ -769,11 +769,18 @@ class MistralSSEMCPServer {
       // Only consider segments > 100 meters for meaningful bottleneck analysis
       const segments = data.detailedSegments || [];
       
+      // Filter segments: only include those with delays AND length > 100 meters
       const delayedSegments = segments
         .filter(seg => {
+          // Check if segment has traffic delay
           const hasDelay = seg.averageSpeed && seg.typicalSpeed && seg.averageSpeed < seg.typicalSpeed;
-          const isLongEnough = seg.segmentLength > 0.1;
-          console.log(`Segment: length=${seg.segmentLength}km, hasDelay=${hasDelay}, isLongEnough=${isLongEnough}`);
+          
+          // Check if segment is longer than 100 meters (0.1 km)
+          // segmentLength is in kilometers in the API response
+          const isLongEnough = seg.segmentLength && seg.segmentLength > 0.1;
+          
+          console.log(`🔍 Segment filter: length=${seg.segmentLength}km, hasDelay=${hasDelay}, isLongEnough=${isLongEnough}, PASS=${hasDelay && isLongEnough}`);
+          
           return hasDelay && isLongEnough;
         })
         .sort((a, b) => (b.typicalSpeed - b.averageSpeed) - (a.typicalSpeed - a.averageSpeed))
